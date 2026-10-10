@@ -36,6 +36,24 @@ const INV_CAP = CAP.map(c => 1 / c);
 const AIRY = new Uint8Array(COUNT);
 AIRY[EMPTY] = 1; AIRY[FIRE] = 1; AIRY[SMOKE] = 1;
 
+// Cells that can rest: solids and powders. A resting cell at a steady
+// temperature is skipped, which keeps the large buried ground cheap.
+const BLOCKS = new Uint8Array(COUNT);
+const CAN_SLEEP = new Uint8Array(COUNT);
+const WAKE_T = new Float32Array(COUNT);
+for (let t = 1; t < COUNT; t++) {
+  BLOCKS[t] = STATE[t] === SOLID || STATE[t] === POWDER ? 1 : 0;
+  CAN_SLEEP[t] = BLOCKS[t] && t !== SEED ? 1 : 0;
+  WAKE_T[t] = Math.min(IGNITE[t] || Infinity, GLOWS[t] ? Infinity : 525);
+}
+// Liquids that can rest when calm (acid keeps working, so it never rests).
+const CALM_OK = new Uint8Array(COUNT);
+const FULL = new Uint8Array(COUNT);
+for (let t = 1; t < COUNT; t++) {
+  CALM_OK[t] = STATE[t] === LIQUID && t !== ACID ? 1 : 0;
+  FULL[t] = STATE[t] !== GAS ? 1 : 0;
+}
+
 export class World {
   constructor(W, H, D = 1) {
     this.W = W; this.H = H; this.D = D;
@@ -58,7 +76,7 @@ export class World {
     this.events = [];
     this.steps = 0;
     this.quiet = 0;   // steps to ignore discoveries for, while a new scene settles
-    if (this.is3D) this.setupChunks();
+    this.setupChunks();
   }
 
   // ----- 3D chunk bookkeeping so the renderer only rebuilds what changed -----
@@ -67,6 +85,9 @@ export class World {
     this.CX = Math.ceil(W / CHUNK); this.CY = Math.ceil(H / CHUNK); this.CZ = Math.ceil(D / CHUNK);
     this.chunkCount = this.CX * this.CY * this.CZ;
     this.dirty = new Uint8Array(this.chunkCount).fill(1);
+    this.heatAct = new Uint8Array(this.chunkCount).fill(1); // regions holding heat away from 20 °C
+    this.awake = new Uint8Array(this.chunkCount).fill(1);   // regions where something may move
+    this.awakeNext = new Uint8Array(this.chunkCount).fill(1);
     this.chunkOf = new Uint16Array(N);
     this.edge = new Uint8Array(N);
     for (let y = 0; y < H; y++) for (let z = 0; z < D; z++) for (let x = 0; x < W; x++) {
@@ -85,18 +106,19 @@ export class World {
     }
   }
 
+  // A cell changed: its region needs a new mesh and must be simulated next step.
   touch(i) {
-    const c = this.chunkOf[i], d = this.dirty;
-    d[c] = 1;
+    const c = this.chunkOf[i], d = this.dirty, a = this.awakeNext;
+    d[c] = 1; a[c] = 1;
     const e = this.edge[i];
     if (e) {
       const sz = this.CX, sy = this.CX * this.CZ;
-      if (e & 1) d[c - 1] = 1;
-      if (e & 2) d[c + 1] = 1;
-      if (e & 4) d[c - sz] = 1;
-      if (e & 8) d[c + sz] = 1;
-      if (e & 16) d[c - sy] = 1;
-      if (e & 32) d[c + sy] = 1;
+      if (e & 1) { d[c - 1] = 1; a[c - 1] = 1; }
+      if (e & 2) { d[c + 1] = 1; a[c + 1] = 1; }
+      if (e & 4) { d[c - sz] = 1; a[c - sz] = 1; }
+      if (e & 8) { d[c + sz] = 1; a[c + sz] = 1; }
+      if (e & 16) { d[c - sy] = 1; a[c - sy] = 1; }
+      if (e & 32) { d[c + sy] = 1; a[c + sy] = 1; }
     }
   }
 
@@ -116,7 +138,7 @@ export class World {
     this.latent[i] = 0;
     if (T !== undefined) this.temp[i] = T;
     else if (t !== EMPTY) this.temp[i] = TEMP0[t];
-    if (this.is3D) this.touch(i);
+    this.touch(i);
   }
 
   // Change what a cell is made of but keep its heat (phase changes).
@@ -126,7 +148,7 @@ export class World {
     this.vx[i] = 0; this.vy[i] = 0; this.vz[i] = 0;
     this.life[i] = LIFE_MIN[t] + ((Math.random() * LIFE_SPAN[t]) | 0);
     this.latent[i] = 0;
-    if (this.is3D) this.touch(i);
+    this.touch(i);
   }
 
   swap(a, b) {
@@ -143,13 +165,16 @@ export class World {
     const la = this.latent;
     f = la[a]; la[a] = la[b]; la[b] = f;
     this.stamp[a] = this.clock; this.stamp[b] = this.clock;
-    if (this.is3D) { this.touch(a); this.touch(b); }
+    this.touch(a); this.touch(b);
   }
 
   clear() {
     this.type.fill(0); this.temp.fill(AMBIENT); this.life.fill(0); this.flags.fill(0); this.latent.fill(0);
     this.vx.fill(0); this.vy.fill(0); this.vz.fill(0);
-    if (this.is3D) this.dirty.fill(1);
+    this.dirty.fill(1);
+    this.heatAct.fill(1);
+    this.awake.fill(1);
+    this.awakeNext.fill(1);
     this.quiet = 90;
   }
 
@@ -208,22 +233,90 @@ export class World {
     this.clock = (this.clock % 255) + 1;
     this.steps++;
     if (this.quiet > 0) this.quiet--;
-    const { W, H, D, type, stamp } = this;
-    const flipX = this.clock & 1, flipZ = (this.clock >> 1) & 1;
-    for (let y = 0; y < H; y++) {
-      for (let zz = 0; zz < D; zz++) {
-        const z = flipZ ? D - 1 - zz : zz;
-        const row = W * (z + D * y);
-        for (let xx = 0; xx < W; xx++) {
-          const x = flipX ? W - 1 - xx : xx;
-          const i = row + x;
-          const t = type[i];
-          if (t === EMPTY || stamp[i] === this.clock) continue;
-          this.update(i, t, x, y, z);
+    // Regions marked during the last step (or by painting since) are scanned
+    // now; this step's activity marks regions for the next one.
+    const awake = this.awakeNext;
+    this.awakeNext = this.awake;
+    this.awake = awake;
+    const next = this.awakeNext;
+    next.fill(0);
+    const { W, H, D, type, stamp, temp, flags, vx, vy, vz, life, heatAct, CX, CY, CZ } = this;
+    const clock = this.clock;
+    const flipX = clock & 1, flipZ = (clock >> 1) & 1;
+    for (let cy = 0; cy < CY; cy++) {
+      const y0 = cy * CHUNK, y1 = Math.min(H, y0 + CHUNK);
+      for (let czz = 0; czz < CZ; czz++) {
+        const cz = flipZ ? CZ - 1 - czz : czz;
+        const z0 = cz * CHUNK, z1 = Math.min(D, z0 + CHUNK);
+        for (let cxx = 0; cxx < CX; cxx++) {
+          const cx = flipX ? CX - 1 - cxx : cxx;
+          const c = cx + CX * (cz + CZ * cy);
+          if (!awake[c] && !heatAct[c]) continue;
+          const x0 = cx * CHUNK, x1 = Math.min(W, x0 + CHUNK);
+          for (let y = y0; y < y1; y++) {
+            for (let zz = z0; zz < z1; zz++) {
+              const z = flipZ ? z1 - 1 - (zz - z0) : zz;
+              const row = W * (z + D * y);
+              for (let xx = x0; xx < x1; xx++) {
+                const x = flipX ? x1 - 1 - (xx - x0) : xx;
+                const i = row + x;
+                const t = type[i];
+                if (t === EMPTY || stamp[i] === clock) continue;
+                const T = temp[i];
+                if (T !== AMBIENT) heatAct[c] = 1;
+                // Fast path: a resting solid or powder with nothing to react to.
+                if (CAN_SLEEP[t] && T <= HOT_AT[t] && T >= COLD_AT[t] && T < WAKE_T[t] && (flags[i] & (BURNING | GROWING)) === 0) {
+                  if (STATE[t] === SOLID) { if (t !== PLANT || life[i] <= 0) continue; }
+                  else if (vx[i] === 0 && vy[i] === 0 && vz[i] === 0 && this.settled(i, x, y, z)) continue;
+                } else if (CALM_OK[t] && T <= HOT_AT[t] && T >= COLD_AT[t] && T < WAKE_T[t] && (flags[i] & BURNING) === 0 &&
+                  vx[i] === 0 && vy[i] === 0 && vz[i] === 0 && this.calm(i, t, x, y, z)) {
+                  continue;
+                }
+                next[c] = 1;
+                this.update(i, t, x, y, z);
+              }
+            }
+          }
         }
       }
     }
     this.conduct();
+  }
+
+  // A liquid is calm when it cannot fall, slide or flow: everything below is
+  // solid or at least as dense, and its sides are full.
+  calm(i, t, x, y, z) {
+    const { W, H, D, L, type } = this;
+    if (y > 0) {
+      const b = i - L;
+      if (!this.holds(t, type[b])) return false;
+      for (let k = 0; k < 8; k++) {
+        const nx = x + DIAG_X[k], nz = z + DIAG_Z[k];
+        if (nx < 0 || nx >= W || nz < 0 || nz >= D) continue;
+        if (!this.holds(t, type[b + DIAG_X[k] + DIAG_Z[k] * W])) return false;
+      }
+    }
+    if (x > 0 && !FULL[type[i - 1]]) return false;
+    if (x < W - 1 && !FULL[type[i + 1]]) return false;
+    if (z > 0 && !FULL[type[i - W]]) return false;
+    if (z < D - 1 && !FULL[type[i + W]]) return false;
+    return true;
+  }
+
+  holds(t, o) { return BLOCKS[o] === 1 || (STATE[o] === LIQUID && DENS[o] >= DENS[t]); }
+
+  // A powder is settled when the cell below and every diagonal below are full.
+  settled(i, x, y, z) {
+    if (y === 0) return true;
+    const { W, D, type } = this;
+    const b = i - this.L;
+    if (!BLOCKS[type[b]]) return false;
+    for (let k = 0; k < 8; k++) {
+      const nx = x + DIAG_X[k], nz = z + DIAG_Z[k];
+      if (nx < 0 || nx >= W || nz < 0 || nz >= D) continue;
+      if (!BLOCKS[type[b + DIAG_X[k] + DIAG_Z[k] * W]]) return false;
+    }
+    return true;
   }
 
   update(i, t, x, y, z) {
@@ -378,6 +471,7 @@ export class World {
           const f = 1 - d / r;
           const hot = AMBIENT + 700 * f;
           if (temp[j] < hot) temp[j] = hot;
+          this.heatAct[this.chunkOf[j]] = 1;
           if (t === EMPTY) { if (d < r * 0.6 && Math.random() < 0.7) this.set(j, FIRE, 1400); continue; }
           const s = STATE[t];
           if (t === GUNPOWDER) { temp[j] = Math.max(temp[j], 400); continue; }
@@ -701,14 +795,31 @@ export class World {
   }
 
   // ----- heat -----
+  // Heat flows only in 16³ regions that hold heat (or touch one that does);
+  // everywhere else is already at room temperature.
   conduct() {
+    const { W, H, D, L, type, temp, CX, CY, CZ, heatAct } = this;
+    const sZ = CX, sY = CX * CZ;
+    for (let cy = 0; cy < CY; cy++) for (let cz = 0; cz < CZ; cz++) for (let cx = 0; cx < CX; cx++) {
+      const c = cx + sZ * cz + sY * cy;
+      const nx = cx + 1 < CX, nz = cz + 1 < CZ, ny = cy + 1 < CY;
+      if (!(heatAct[c] || (nx && heatAct[c + 1]) || (nz && heatAct[c + sZ]) || (ny && heatAct[c + sY]))) continue;
+      const any = this.conductBox(cx * CHUNK, Math.min(W, cx * CHUNK + CHUNK), cy * CHUNK, Math.min(H, cy * CHUNK + CHUNK),
+        cz * CHUNK, Math.min(D, cz * CHUNK + CHUNK));
+      heatAct[c] = any;
+      if (any) { if (nx) heatAct[c + 1] = 1; if (nz) heatAct[c + sZ] = 1; if (ny) heatAct[c + sY] = 1; }
+    }
+  }
+
+  conductBox(x0, x1, y0, y1, z0, z1) {
     const { W, H, D, L, type, temp } = this;
-    for (let y = 0; y < H; y++) {
+    let any = 0;
+    for (let y = y0; y < y1; y++) {
       const top = y < H - 1;
-      for (let z = 0; z < D; z++) {
+      for (let z = z0; z < z1; z++) {
         const back = z < D - 1;
-        let i = W * (z + D * y);
-        for (let x = 0; x < W; x++, i++) {
+        let i = x0 + W * (z + D * y);
+        for (let x = x0; x < x1; x++, i++) {
           const a = type[i];
           let ti = temp[i];
           const base = a * COUNT;
@@ -744,36 +855,41 @@ export class World {
           // Slow loss of heat to the surroundings.
           const dAmb = AMBIENT - ti;
           if (dAmb !== 0) {
-            if (dAmb < 0.05 && dAmb > -0.05) ti = AMBIENT;
+            if (dAmb < 0.5 && dAmb > -0.5) ti = AMBIENT; // close enough to room temperature
             else ti += dAmb * (a === EMPTY ? 0.02 : 0.0001);
           }
           temp[i] = ti;
+          if (ti !== AMBIENT) any = 1;
         }
       }
     }
+    return any;
   }
 
   // ----- painting -----
-  // mode: 'add' | 'erase' | 'heat' | 'cool'
-  paint(cx, cy, cz, r, mode, t) {
+  // mode: 'add' | 'erase' | 'heat' | 'cool'. The brush is a ball of radius r,
+  // squashed to half-depth rz along z (the 2D view paints a thin disc through
+  // its slice). pour scales how densely loose materials are poured.
+  paint(cx, cy, cz, r, mode, t, rz = r, pour = 1) {
     const { W, H, D, type, temp } = this;
     const ri = Math.floor(r);
-    const zr = this.is3D ? ri : 0;
+    const zr = Math.min(Math.floor(rz), D - 1);
     const s = STATE[t];
     let density = 1;
     if (mode === 'add') {
-      if (s === POWDER) density = this.is3D ? 0.12 : 0.45;
-      else if (s === LIQUID) density = this.is3D ? 0.18 : 0.6;
-      else if (s === GAS) density = this.is3D ? 0.12 : 0.35;
-      if (t === SEED) density = this.is3D ? 0.01 : 0.04;
+      if (s === POWDER) density = 0.12 * pour;
+      else if (s === LIQUID) density = 0.18 * pour;
+      else if (s === GAS) density = 0.12 * pour;
+      if (t === SEED) density = 0.01 * pour;
     }
+    const r2 = r * r + 0.5, rz2 = rz * rz + 0.5;
     for (let dy = -ri; dy <= ri; dy++) {
       const y = cy + dy; if (y < 0 || y >= H) continue;
       for (let dz = -zr; dz <= zr; dz++) {
         const z = cz + dz; if (z < 0 || z >= D) continue;
         for (let dx = -ri; dx <= ri; dx++) {
           const x = cx + dx; if (x < 0 || x >= W) continue;
-          if (dx * dx + dy * dy + dz * dz > r * r + 0.5) continue;
+          if ((dx * dx + dy * dy) / r2 + (dz * dz) / rz2 > 1) continue;
           const i = x + W * (z + D * y);
           const o = type[i];
           if (mode === 'add') {
@@ -784,9 +900,11 @@ export class World {
           } else if (mode === 'erase') {
             if (o !== EMPTY) this.set(i, EMPTY, AMBIENT);
           } else if (mode === 'heat') {
-            temp[i] = Math.min(temp[i] + (this.is3D ? 60 : 40), 2500);
+            temp[i] = Math.min(temp[i] + 50, 2500);
+            this.heatAct[this.chunkOf[i]] = 1;
           } else if (mode === 'cool') {
-            temp[i] = Math.max(temp[i] - (this.is3D ? 30 : 20), -200);
+            temp[i] = Math.max(temp[i] - 25, -200);
+            this.heatAct[this.chunkOf[i]] = 1;
           }
         }
       }

@@ -1,9 +1,13 @@
 // Sandgrove: app shell. Builds the interface, reads the mouse and keyboard,
-// runs the simulation clock and switches between the 2D and 3D worlds.
+// runs the simulation clock and switches between the two views.
+//
+// There is exactly one world: a 3D voxel grid with one simulation. The 3D
+// view shows all of it; the 2D view shows one slice of it. Switching views
+// never touches the world, so everything keeps running in both.
 
 import * as El from './elements.js';
 import { World } from './world.js';
-import { SCENES_2D, SCENES_3D } from './scenes.js';
+import { autumnGlade, emptyWorld, WORLD_SIZE } from './scenes.js';
 import { Renderer2D } from './render2d.js';
 import { drawSwatch } from './textures.js';
 
@@ -28,22 +32,18 @@ const TOOL_ICONS = {
   cool: '<svg viewBox="0 0 16 16" aria-hidden="true"><g stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M8 1.5v13M2.4 4.75l11.2 6.5M2.4 11.25l11.2-6.5"/><path d="M6.3 2.8 8 4.3l1.7-1.5M6.3 13.2 8 11.7l1.7 1.5"/></g></svg>',
 };
 
-// ----- worlds -----
-const stageRect = stage.getBoundingClientRect();
-const cellPx = stageRect.width < 640 ? 3 : 4;
-const W2 = Math.max(120, Math.min(360, Math.round(stageRect.width / cellPx)));
-const H2 = Math.max(90, Math.min(230, Math.round(stageRect.height / cellPx)));
-const world2d = new World(W2, H2, 1);
-SCENES_2D.pond(world2d);
-const r2d = new Renderer2D(stage, world2d);
-let world3d = null, r3d = null, loading3d = null;
+// ----- the world -----
+const world = new World(WORLD_SIZE.W, WORLD_SIZE.H, WORLD_SIZE.D);
+autumnGlade(world);
+const r2d = new Renderer2D(stage, world);
+let r3d = null, loading3d = null;   // the 3D view loads the first time it is opened
 
 const state = {
   mode: '2d',
   selected: { kind: 'el', id: El.SAND },
   paused: false,
   speed: store.get('speed', 1),
-  brush: { '2d': 5, '3d': 2 },
+  brush: { '2d': 3, '3d': 2 },
   thermal: false,
   painting: null,     // 'add' | 'erase' | 'heat' | 'cool' while a button is held
   pointer: null,      // last pointer position over the stage
@@ -54,14 +54,13 @@ const state = {
 
 // ----- discoveries -----
 const found = new Set(store.get('found', []));
-for (const id of found) world2d.found[id] = 1;
+for (const id of found) world.found[id] = 1;
 
 function addDiscovery(id) {
   if (found.has(id)) return;
   found.add(id);
   store.set('found', [...found]);
-  world2d.found[id] = 1;
-  if (world3d) world3d.found[id] = 1;
+  world.found[id] = 1;
   const d = El.DISCOVERIES[id];
   toast(d.title, d.recipe, d.text);
   renderDiscoveries();
@@ -156,8 +155,9 @@ function select(sel) {
 
 // ----- controls -----
 const brushInput = $('#brush'), brushOut = $('#brush-out');
+const BRUSH_MAX = { '2d': 12, '3d': 6 };
 function syncBrush() {
-  const max = state.mode === '2d' ? 24 : 6;
+  const max = BRUSH_MAX[state.mode];
   brushInput.min = state.mode === '2d' ? 1 : 0;
   brushInput.max = max;
   brushInput.value = state.brush[state.mode];
@@ -186,14 +186,20 @@ $('#btn-step').addEventListener('click', () => { setPaused(true); state.stepOnce
 $('#btn-reset').addEventListener('click', resetScene);
 $('#btn-clear').addEventListener('click', clearScene);
 
-function resetScene() {
-  if (state.mode === '2d') SCENES_2D.pond(world2d);
-  else if (world3d) SCENES_3D.glade(world3d);
+// Reset and Clear act on the one shared world, whichever view is open.
+function resetScene() { autumnGlade(world); }
+function clearScene() { emptyWorld(world); }
+
+// ----- slice -----
+const sliceInput = $('#slice'), sliceOut = $('#slice-out');
+sliceInput.max = world.D - 1;
+function setSlice(z) {
+  r2d.setSlice(z);
+  sliceInput.value = r2d.z;
+  sliceOut.textContent = r2d.z;
+  if (r3d) r3d.showSlice(r2d.z);
 }
-function clearScene() {
-  if (state.mode === '2d') SCENES_2D.empty(world2d);
-  else if (world3d) SCENES_3D.empty(world3d);
-}
+sliceInput.addEventListener('input', () => setSlice(+sliceInput.value));
 
 $('#btn-thermal').addEventListener('click', () => {
   state.thermal = !state.thermal;
@@ -255,8 +261,7 @@ $('#disc-reset').addEventListener('click', () => {
   btn.textContent = 'Reset progress';
   found.clear();
   store.set('found', []);
-  world2d.found.fill(0);
-  if (world3d) world3d.found.fill(0);
+  world.found.fill(0);
   renderDiscoveries();
 });
 
@@ -300,18 +305,19 @@ async function setMode(mode) {
   state.painting = null;
   for (const b of document.querySelectorAll('[data-mode-btn]')) b.setAttribute('aria-selected', String(b.dataset.modeBtn === mode));
   r2d.setVisible(mode === '2d');
-  if (r3d) r3d.setVisible(mode === '3d');
+  if (r3d) {
+    r3d.setVisible(mode === '3d');
+    if (mode === '3d') { r3d.updateChunks(Infinity); r3d.showSlice(r2d.z); }
+  }
   syncBrush();
   drawSwatches();
   store.set('mode', mode);
   resize();
 }
+// Only the 3D view is created here; the world it shows already exists.
 async function load3d() {
   const { Renderer3D } = await import('./render3d.js');
-  world3d = new World(64, 48, 64);
-  for (const id of found) world3d.found[id] = 1;
-  SCENES_3D.glade(world3d);
-  r3d = new Renderer3D(stage, world3d);
+  r3d = new Renderer3D(stage, world);
   r3d.setPixelScale(store.get('pixel', 2));
   for (const o of document.querySelectorAll('[data-pixel]')) o.setAttribute('aria-pressed', String(+o.dataset.pixel === r3d.pixelScale));
   r3d.setVisible(false);
@@ -355,10 +361,14 @@ function attach3dInput(canvas) {
   canvas.addEventListener('pointerleave', () => { if (!state.painting) state.pointer = null; });
 }
 
+// The 2D brush paints into the shared grid as a thin disc through the
+// current slice (5 cells deep), so it shows up as a solid shape in 3D.
+const SLICE_DEPTH = 2, SLICE_POUR = 3.5;
 function paint2d() {
   if (!state.pointer) { r2d.cursor = null; return null; }
   const c = r2d.toCell(state.pointer.x, state.pointer.y);
   const r = state.brush['2d'];
+  const z = r2d.z;
   r2d.cursor = c.inside ? { x: c.x, y: c.y, r } : null;
   if (state.painting) {
     const from = state.lastCell || c;
@@ -367,11 +377,11 @@ function paint2d() {
     const t = state.selected.kind === 'el' ? state.selected.id : 0;
     for (let s = 0; s <= steps; s += every) {
       const x = Math.round(from.x + (c.x - from.x) * s / steps), y = Math.round(from.y + (c.y - from.y) * s / steps);
-      world2d.paint(x, y, 0, r, state.painting, t);
+      world.paint(x, y, z, r, state.painting, t, Math.min(r, SLICE_DEPTH), SLICE_POUR);
     }
     state.lastCell = c;
   }
-  return c.inside ? world2d.index(c.x, c.y) : null;
+  return c.inside ? world.index(c.x, c.y, z) : null;
 }
 
 function paint3d() {
@@ -383,10 +393,10 @@ function paint3d() {
   r3d.showCursor(target, r);
   if (state.painting && target) {
     const t = state.selected.kind === 'el' ? state.selected.id : 0;
-    world3d.paint(target[0], target[1], target[2], r + 0.5, state.painting, t);
+    world.paint(target[0], target[1], target[2], r + 0.5, state.painting, t);
   }
   const look = p && (p.hit || p.place);
-  return look ? world3d.index(look[0], look[1], look[2]) : null;
+  return look ? world.index(look[0], look[1], look[2]) : null;
 }
 
 const KEY_TOOLS = { e: 'erase', h: 'heat', j: 'cool' };
@@ -404,9 +414,14 @@ window.addEventListener('keydown', e => {
   if (k === 'r') { resetScene(); return; }
   if (k === 'c') { clearScene(); return; }
   if (k === '?' || k === '/') { openPanel('help'); return; }
+  if (k === 'w' || k === 's' || (state.mode === '2d' && (k === 'arrowup' || k === 'arrowdown'))) {
+    e.preventDefault();
+    setSlice(r2d.z + (k === 'w' || k === 'arrowup' ? -1 : 1));
+    return;
+  }
   if (k === '[' || k === ']') {
     const d = k === '[' ? -1 : 1;
-    const max = state.mode === '2d' ? 24 : 6, min = state.mode === '2d' ? 1 : 0;
+    const max = BRUSH_MAX[state.mode], min = state.mode === '2d' ? 1 : 0;
     state.brush[state.mode] = Math.max(min, Math.min(max, state.brush[state.mode] + d));
     syncBrush();
     return;
@@ -419,7 +434,7 @@ window.addEventListener('keydown', e => {
 stage.addEventListener('wheel', e => {
   if (state.mode !== '2d') return;
   e.preventDefault();
-  state.brush['2d'] = Math.max(1, Math.min(24, state.brush['2d'] + (e.deltaY > 0 ? -1 : 1)));
+  state.brush['2d'] = Math.max(1, Math.min(BRUSH_MAX['2d'], state.brush['2d'] + (e.deltaY > 0 ? -1 : 1)));
   syncBrush();
 }, { passive: false });
 
@@ -436,7 +451,7 @@ function dismissCoach() {
 // ----- inspector -----
 const insName = $('#ins-name'), insTemp = $('#ins-temp'), inspector = $('#inspector');
 let lastIns = '';
-function inspect(world, i) {
+function inspect(i) {
   let text = '';
   if (i == null) { inspector.classList.add('idle'); text = 'idle'; }
   else {
@@ -464,40 +479,39 @@ function resize() {
 new ResizeObserver(resize).observe(stage);
 
 // ----- main loop -----
-const RATE = { '2d': 60, '3d': 40 };
+// One clock drives the one world, whichever view is on screen.
+const RATE = 50; // simulation steps per second at 1× speed
 let last = performance.now();
 let fpsT = 0, fpsN = 0;
 function frame(now) {
   const dt = Math.min(0.1, (now - last) / 1000);
   last = now;
-  const is2d = state.mode === '2d';
-  const world = is2d ? world2d : world3d;
-  if (world) {
-    const hover = is2d ? paint2d() : paint3d();
-    if (!state.paused) {
-      state.acc += dt * state.speed * RATE[state.mode];
-      let n = 0;
-      while (state.acc >= 1 && n < 3) { world.step(); state.acc -= 1; n++; }
-      if (state.acc > 3) state.acc = 0;
-    } else if (state.stepOnce) {
-      world.step();
-      state.stepOnce = false;
-    }
-    if (is2d) r2d.render(now / 1000, state.thermal);
-    else r3d.render(dt, !state.paused);
-    while (world.events.length) addDiscovery(world.events.shift());
-    inspect(world, hover);
+  const is2d = state.mode === '2d' || !r3d;
+  const hover = is2d ? paint2d() : paint3d();
+  if (!state.paused) {
+    state.acc += dt * state.speed * RATE;
+    let n = 0;
+    while (state.acc >= 1 && n < 3) { world.step(); state.acc -= 1; n++; }
+    if (state.acc > 3) state.acc = 0;
+  } else if (state.stepOnce) {
+    world.step();
+    state.stepOnce = false;
   }
+  if (is2d) r2d.render(now / 1000, state.thermal);
+  else r3d.render(dt, !state.paused);
+  while (world.events.length) addDiscovery(world.events.shift());
+  inspect(hover);
   fpsT += dt; fpsN++;
   if (fpsT > 1) { $('#fps').textContent = `${Math.round(fpsN / fpsT)} fps`; fpsT = 0; fpsN = 0; }
   requestAnimationFrame(frame);
 }
 
 // Handy for poking at the simulation from the browser console.
-window.sandgrove = { get world2d() { return world2d; }, get world3d() { return world3d; }, get r3d() { return r3d; }, El };
+window.sandgrove = { world, r2d, get r3d() { return r3d; }, El };
 
 // ----- start -----
 select(state.selected);
+setSlice(r2d.z);
 setSpeed(state.speed);
 syncBrush();
 drawSwatches();

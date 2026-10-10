@@ -6,10 +6,22 @@ simple real-world physics: heavy things sink, liquids level out, heat flows
 from hot to cold, and things melt, boil, freeze and burn at their real
 temperatures.
 
-There are two modes. Switch between them with the **2D / 3D** button at the top, or press **M**:
+There is **one world**, a block of 160 × 90 × 48 voxels, with one simulation
+running all the time. You can look at it two ways. Switch with the **2D / 3D**
+button at the top, or press **M**:
 
-- **2D side view**: warm autumn pixel art with a pond, a wooden dock and trees.
-- **3D voxel world**: a misty teal forest made of blocks. You can turn the camera around it.
+- **3D voxel world**: the whole world as blocks, in a misty teal forest. You can turn the camera around it.
+- **2D side view**: one slice cut straight through the same world, drawn as warm autumn pixel art,
+  like looking at the side of an ant farm. Move the cut forward and back with the **Slice** slider
+  or the **W** and **S** keys.
+
+Anything you paint in one view is in the other right away, because it is the
+same world. Switching views never resets anything: fire keeps burning, water
+keeps flowing and lava keeps cooling while you look from the other side.
+
+Because the 2D view is a slice of a 3D world, things can move out of the slice.
+Water poured on flat ground spreads out in depth too, so it gets thinner in
+the side view, just as it really would.
 
 There are 20 reactions to discover, such as obsidian, rain, glassmaking and
 explosions. The **Discoveries** button in the top right keeps track of them.
@@ -95,6 +107,7 @@ GitHub Pages is free for public projects. For a private project it needs a paid 
 |---|---|---|
 | Paint | Left mouse | Left mouse |
 | Erase | Right mouse, or the Eraser tool | Eraser tool |
+| Slice | Slice slider, `W` and `S` (or arrow up and down) | `W` and `S` (the slice flashes in yellow) |
 | Camera | | Right-drag turns, scroll zooms, middle-drag moves, A and D keys orbit |
 | Brush size | Scroll wheel, or the `[` and `]` keys | `[` and `]` keys |
 | Touch | Drag a finger to paint | One finger paints, two fingers turn and zoom |
@@ -102,7 +115,7 @@ GitHub Pages is free for public projects. For a private project it needs a paid 
 Everywhere:
 - `1` to `0` pick elements. `E` is the eraser, `H` heat, `J` cool.
 - `Space` pauses, `.` moves one step forward.
-- `R` resets the scene and `C` clears it.
+- `R` resets the world and `C` clears it (in either view, since there is one world).
 - `T` turns on the thermal camera (2D).
 - `M` switches between 2D and 3D. `?` opens the help.
 
@@ -123,12 +136,14 @@ uses **three.js**, a well-known free 3D engine for the web. Here is why:
 
 - **Nothing to install to play.** Anyone with a browser can play it on Windows,
   Mac, Linux or a phone. You can share it with a link.
-- **One language for both modes.** The physics engine is shared: the 2D world
-  is just a grid that is one cell deep, the 3D world is a full block of cells.
-  Every rule (melting, burning, sinking...) works the same way in both.
+- **One language, one world.** Both views draw the same voxel grid, run by the
+  same physics engine, so every rule (melting, burning, sinking...) is
+  identical whichever way you look at it.
 - **Fast enough.** A falling-sand game updates every cell many times a second.
-  Modern browsers run JavaScript very fast. Here the 2D world takes about 1 ms
-  per step and the 3D world about 4–6 ms.
+  Modern browsers run JavaScript very fast. The engine skips regions where
+  nothing can happen (buried rock, calm water, ground at room temperature),
+  so a step of the whole 690,000-cell world takes about 2 ms when it is calm,
+  and around 10 ms in the middle of a big fire.
 - **No game engine needed for the physics.** Engines like Unity or Godot come
   with rigid-body physics (bouncing boxes). Falling-sand physics is a different
   kind of simulation that every sand game writes itself. A big engine would
@@ -165,10 +180,10 @@ catches fire. Many times a second, every cell:
 | `index.html` | The page: layout of the buttons and panels. |
 | `styles.css` | The dark interface styling. |
 | `src/elements.js` | Every element and its real-world numbers, plus the discoveries list. Change numbers here to change how things behave. |
-| `src/world.js` | The physics engine shared by both modes. |
-| `src/scenes.js` | The starting worlds (autumn pond and forest glade). |
-| `src/render2d.js` | Draws the 2D pixel-art view. |
-| `src/render3d.js` | Builds and draws the 3D voxel world with three.js. |
+| `src/world.js` | The physics engine: the one world both views show. |
+| `src/scenes.js` | The world size and the starting scene (autumn pond, dock and trees). |
+| `src/render2d.js` | Draws one slice of the world as 2D pixel art. |
+| `src/render3d.js` | Draws the whole world as 3D voxels with three.js, plus the forest around it. |
 | `src/textures.js` | Draws the pixel textures for the 3D blocks and the palette swatches. |
 | `src/main.js` | Buttons, mouse, keyboard, switching modes and the game loop. |
 | `server.js` | The small local web server started by `npm start`. |

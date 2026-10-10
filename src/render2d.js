@@ -1,6 +1,7 @@
-// 2D renderer: one pixel per cell, scaled up with crisp edges. Colours are
-// picked per cell from warm autumn palettes, shaded by how deep a cell sits
-// below the open air (grass tops, lit leaf edges, darker deep water).
+// 2D renderer: shows one slice (a cross-section at depth z) of the shared 3D
+// world, one pixel per cell, scaled up with crisp edges. Colours are picked
+// per cell from warm autumn palettes, shaded by how deep a cell sits below
+// the open air (grass tops, lit leaf edges, darker deep water).
 
 import * as El from './elements.js';
 import { rng } from './scenes.js';
@@ -132,6 +133,9 @@ export class Renderer2D {
   constructor(stage, world) {
     this.world = world;
     const { W, H } = world;
+    this.z = Math.floor(world.D / 2); // which slice is shown
+    // The current slice, copied out of the world each frame.
+    this.slice = { W, H, type: new Uint8Array(W * H), temp: new Float32Array(W * H), shade: new Uint8Array(W * H), life: new Int16Array(W * H) };
     this.wrap = document.createElement('div');
     this.wrap.className = 'view2d';
     this.canvas = document.createElement('canvas');
@@ -178,6 +182,21 @@ export class Renderer2D {
 
   setVisible(v) { this.wrap.hidden = !v; }
 
+  setSlice(z) { this.z = Math.max(0, Math.min(this.world.D - 1, z)); }
+
+  // Copy slice z of the 3D grid into flat 2D arrays.
+  extract() {
+    const { W, H, D, type, temp, shade, life } = this.world;
+    const sl = this.slice, z = this.z;
+    for (let y = 0; y < H; y++) {
+      const src = W * (z + D * y), dst = W * y;
+      sl.type.set(type.subarray(src, src + W), dst);
+      sl.temp.set(temp.subarray(src, src + W), dst);
+      sl.shade.set(shade.subarray(src, src + W), dst);
+      sl.life.set(life.subarray(src, src + W), dst);
+    }
+  }
+
   resize(w, h) {
     const { W, H } = this.world;
     const s = Math.min(w / W, h / H);
@@ -197,7 +216,7 @@ export class Renderer2D {
   }
 
   computeDepth() {
-    const { W, H, type } = this.world;
+    const { W, H, type } = this.slice;
     const depth = this.depth;
     for (let x = 0; x < W; x++) {
       let prev = -1, run = 0, exposed = 64;
@@ -215,7 +234,8 @@ export class Renderer2D {
   }
 
   render(time, thermalView) {
-    const { W, H, type, temp, shade, life } = this.world;
+    this.extract();
+    const { W, H, type, temp, shade, life } = this.slice;
     const buf = this.buf, gbuf = this.gbuf, depth = this.depth, leafTone = this.leafTone, stonePat = this.stonePat;
     this.computeDepth();
     buf.set(this.bg);

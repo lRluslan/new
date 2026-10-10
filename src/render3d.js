@@ -11,7 +11,7 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import * as El from './elements.js';
 import { buildAtlas, tileFor, COLS, ROWS } from './textures.js';
-import { rng, gladeHeight } from './scenes.js';
+import { rng, groundHeight } from './scenes.js';
 
 const { EMPTY, DIRT, WOOD, PLANT, STONE, WATER, STATE, GAS, GROUP3, ALPHA3, OCCLUDES, GLOWS } = El;
 
@@ -114,11 +114,12 @@ function meshBox(src, x0, y0, z0, x1, y1, z1, bufs, stats) {
   }
 }
 
-function makeDecor() {
+function makeDecor(world) {
   // A ring of tall pixel trees around the play area, fading into the fog.
   // Ground and trees go in separate grids so trees can be hidden when they
   // block the camera.
-  const DW = 240, DH = 96, DD = 240;
+  const PW = world.W, PD = world.D;          // play area size
+  const DW = PW + 150, DH = 112, DD = PD + 180;
   const ground = new Uint8Array(DW * DH * DD);
   const trees = new Uint8Array(DW * DH * DD);
   const shade = new Uint8Array(ground.length);
@@ -128,7 +129,7 @@ function makeDecor() {
   const put = (x, y, z, t) => {
     x = Math.round(x); y = Math.round(y); z = Math.round(z);
     if (x < 0 || y < 0 || z < 0 || x >= DW || y >= DH || z >= DD) return;
-    if (Math.abs(x - DW / 2 + 0.5) < 32 && Math.abs(z - DD / 2 + 0.5) < 32 && y < 48) return; // play area
+    if (Math.abs(x - DW / 2 + 0.5) < PW / 2 && Math.abs(z - DD / 2 + 0.5) < PD / 2 && y < world.H) return; // play area
     (t === STONE || t === DIRT ? ground : trees)[idx(x, y, z)] = t;
   };
   const blob = (cx, cy, cz, r, ry, t) => {
@@ -140,12 +141,15 @@ function makeDecor() {
   };
   // Ground continues the play area's rolling soil, then smooths out into
   // gentle hills that rise toward the edge.
+  // Distance outside the play area's rectangle (0 inside it).
+  const outside = (x, z) => Math.hypot(Math.max(0, Math.abs(x - DW / 2) - PW / 2), Math.max(0, Math.abs(z - DD / 2) - PD / 2));
+  const base = world.H * 0.3;
   const height = (x, z) => {
-    const sx = x - DW / 2 + 32, sz = z - DD / 2 + 32;
-    const edge = Math.max(Math.abs(x - DW / 2), Math.abs(z - DD / 2));
-    const near = gladeHeight(sx, sz);
-    const far = 7 + 2.2 * Math.sin(x * 0.045 + 1) * Math.cos(z * 0.05) + Math.max(0, Math.hypot(x - DW / 2, z - DD / 2) - 70) * 0.14;
-    const f = Math.min(1, Math.max(0, (edge - 33) / 12));
+    const sx = x - DW / 2 + PW / 2, sz = z - DD / 2 + PD / 2;
+    const out = outside(x, z);
+    const near = groundHeight(sx, sz, world.H);
+    const far = base + 2.2 * Math.sin(x * 0.045 + 1) * Math.cos(z * 0.05) + Math.max(0, out - 25) * 0.14;
+    const f = Math.min(1, out / 12);
     return Math.round(near + (far - near) * f);
   };
   for (let z = 0; z < DD; z++) for (let x = 0; x < DW; x++) {
@@ -153,10 +157,12 @@ function makeDecor() {
     for (let y = 0; y < h; y++) put(x, y, z, y < h - 4 ? STONE : DIRT);
   }
   const placed = [];
-  for (let k = 0; k < 70; k++) {
-    const ang = rand() * Math.PI * 2, rad = 62 + rand() * 52;
-    const x = DW / 2 + Math.cos(ang) * rad, z = DD / 2 + Math.sin(ang) * rad;
+  for (let k = 0; k < 400 && placed.length < 70; k++) {
+    const x = 6 + rand() * (DW - 12), z = 6 + rand() * (DD - 12);
+    const out = outside(x, z);
+    if (out < 14 || out > 70) continue;
     if (placed.some(([px, pz]) => Math.hypot(px - x, pz - z) < 11)) continue;
+    const rad = out + 60;
     placed.push([x, z]);
     const g = height(Math.round(x), Math.round(z));
     const h = Math.min(DH - 14, 36 + rand() * 28 + (rad > 90 ? 12 : 0));
@@ -183,13 +189,14 @@ function makeDecor() {
     blob(x + w / 2, top + 1, z + w / 2, 6 + rand() * 4, 4 + rand() * 2, PLANT);
     blob(x + w / 2 + (rand() - 0.5) * 8, top - 3, z + w / 2 + (rand() - 0.5) * 8, 4 + rand() * 3, 3 + rand(), PLANT);
   }
-  for (let k = 0; k < 80; k++) {
-    const ang = rand() * Math.PI * 2, rad = 36 + rand() * 70;
-    const x = DW / 2 + Math.cos(ang) * rad, z = DD / 2 + Math.sin(ang) * rad;
+  for (let k = 0; k < 300; k++) {
+    const x = rand() * DW, z = rand() * DD;
+    const out = outside(x, z);
+    if (out < 3 || out > 60) continue;
     blob(x, height(Math.round(x), Math.round(z)) + 1, z, 2 + rand() * 2.5, 1.6 + rand() * 1.2, rand() < 0.15 ? STONE : PLANT);
   }
-  const base = { W: DW, H: DH, D: DD, shade, ox: -DW / 2, oy: 0, oz: -DD / 2 };
-  return { ground: { ...base, type: ground }, trees: { ...base, type: trees } };
+  const src = { W: DW, H: DH, D: DD, shade, ox: -DW / 2, oy: 0, oz: -DD / 2 };
+  return { ground: { ...src, type: ground }, trees: { ...src, type: trees } };
 }
 
 // Soft additive beam that fades out when seen edge-on.
@@ -242,16 +249,17 @@ export class Renderer3D {
 
     const scene = this.scene = new THREE.Scene();
     const fogColor = new THREE.Color('#1c5752');
-    scene.fog = new THREE.Fog(fogColor, 70, 210);
+    scene.fog = new THREE.Fog(fogColor, 110, 300);
 
     const camera = this.camera = new THREE.PerspectiveCamera(42, 1, 0.5, 1200);
-    camera.position.set(50, 40, 58);
+    this.home = { pos: new THREE.Vector3(world.W * 0.45, world.H * 0.85, world.W * 0.7), target: new THREE.Vector3(0, world.H * 0.3, 0) };
+    camera.position.copy(this.home.pos);
     const controls = this.controls = new OrbitControls(camera, this.canvas);
-    controls.target.set(0, 9, 0);
+    controls.target.copy(this.home.target);
     controls.enableDamping = true;
     controls.dampingFactor = 0.08;
     controls.minDistance = 22;
-    controls.maxDistance = 140;
+    controls.maxDistance = 200;
     controls.maxPolarAngle = Math.PI * 0.47;
     controls.mouseButtons = { LEFT: null, MIDDLE: THREE.MOUSE.PAN, RIGHT: THREE.MOUSE.ROTATE };
     controls.touches = { ONE: null, TWO: THREE.TOUCH.DOLLY_ROTATE };
@@ -286,7 +294,8 @@ export class Renderer3D {
     sun.position.copy(this.sunDir).multiplyScalar(110);
     sun.castShadow = true;
     sun.shadow.mapSize.set(2048, 2048);
-    Object.assign(sun.shadow.camera, { left: -80, right: 80, top: 80, bottom: -80, near: 10, far: 260 });
+    Object.assign(sun.shadow.camera, { left: -95, right: 95, top: 95, bottom: -95, near: 10, far: 300 });
+    sun.position.multiplyScalar(1.3);
     sun.shadow.bias = -0.0008;
     sun.shadow.normalBias = 0.3;
     scene.add(sun, sun.target);
@@ -312,6 +321,15 @@ export class Renderer3D {
     this.buildDecor();
     this.buildAtmosphere();
 
+    // Outline of the slice the 2D view shows. It fades in when the slice moves.
+    const sm = this.sliceMarker = new THREE.LineSegments(
+      new THREE.EdgesGeometry(new THREE.PlaneGeometry(world.W, world.H)),
+      new THREE.LineBasicMaterial({ color: '#ffd27a', transparent: true, opacity: 0, depthWrite: false }));
+    sm.position.y = world.H / 2;
+    sm.visible = false;
+    this.sliceFade = 0;
+    scene.add(sm);
+
     // Brush cursor.
     this.cursor = new THREE.Group();
     this.cursor.add(new THREE.LineSegments(
@@ -336,7 +354,7 @@ export class Renderer3D {
   }
 
   buildDecor() {
-    const { ground, trees } = makeDecor();
+    const { ground, trees } = makeDecor(this.world);
     const bufs = [new GeoBuf(), new GeoBuf(), new GeoBuf()];
     this.treeChunks = [];
     for (const [src, S] of [[ground, 48], [trees, 16]]) {
@@ -346,7 +364,7 @@ export class Renderer3D {
         if (!geo) continue;
         const m = new THREE.Mesh(geo, this.materials[0]);
         const cx = x + S / 2 - src.W / 2, cz = z + S / 2 - src.D / 2;
-        const near = Math.hypot(cx, cz) < 95;
+        const near = Math.hypot(cx, cz) < 110;
         m.castShadow = near; m.receiveShadow = near;
         m.matrixAutoUpdate = false;
         this.scene.add(m);
@@ -363,9 +381,10 @@ export class Renderer3D {
     for (const c of this.treeChunks) {
       const t = ((c.x - cam.x) * dx + (c.z - cam.z) * dz) / len2;
       let hide = false;
-      if (t > -0.15 && t < 0.75) {
+      if (t > -0.35 && t < 0.8) {
         const px = cam.x + dx * t - c.x, pz = cam.z + dz * t - c.z;
-        hide = px * px + pz * pz < 20 * 20;
+        const reach = 26 + 34 * Math.max(0, 0.8 - t); // wider near the camera
+        hide = px * px + pz * pz < reach * reach;
       }
       c.mesh.visible = !hide;
     }
@@ -388,7 +407,7 @@ export class Renderer3D {
         g.add(p);
       }
       g.quaternion.copy(q);
-      g.position.set((rand() - 0.5) * 140, 0, (rand() - 0.5) * 140);
+      g.position.set((rand() - 0.5) * (this.world.W + 60), 0, (rand() - 0.5) * (this.world.D + 90));
       g.userData.phase = rand() * 6.28;
       this.shafts.push(g);
       this.scene.add(g);
@@ -397,7 +416,7 @@ export class Renderer3D {
     const n = 900;
     const pos = new Float32Array(n * 3);
     for (let i = 0; i < n; i++) {
-      pos[i * 3] = (rand() - 0.5) * 160; pos[i * 3 + 1] = rand() * 70; pos[i * 3 + 2] = (rand() - 0.5) * 160;
+      pos[i * 3] = (rand() - 0.5) * (this.world.W + 50); pos[i * 3 + 1] = rand() * 70; pos[i * 3 + 2] = (rand() - 0.5) * (this.world.D + 70);
     }
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
@@ -477,9 +496,15 @@ export class Renderer3D {
   }
 
   resetView() {
-    this.camera.position.set(50, 40, 58);
-    this.controls.target.set(0, 9, 0);
+    this.camera.position.copy(this.home.pos);
+    this.controls.target.copy(this.home.target);
     this.controls.update();
+  }
+
+  // Briefly outline the slice at depth z that the 2D view is showing.
+  showSlice(z) {
+    this.sliceMarker.position.z = z - this.world.D / 2 + 0.5;
+    this.sliceFade = 2.5;
   }
 
   // Find the voxel under the mouse with a grid walk along the camera ray.
@@ -539,6 +564,10 @@ export class Renderer3D {
     this.controls.update();
     this.hideBlockingTrees();
     this.sky.position.copy(this.camera.position);
+    const sm = this.sliceMarker;
+    this.sliceFade = Math.max(0, this.sliceFade - dt);
+    sm.visible = this.sliceFade > 0;
+    sm.material.opacity = Math.min(1, this.sliceFade) * 0.7;
     const g = this.glowLight;
     const target = this.glowTarget || 0;
     g.intensity += ((g.intensity > 0 || target > 0 ? target * (0.9 + Math.random() * 0.2) : 0) - g.intensity) * 0.2;

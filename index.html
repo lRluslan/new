@@ -112,6 +112,12 @@
         <output id="brush-out" for="brush">5</output>
       </label>
       <span class="sep" aria-hidden="true"></span>
+      <label class="brush slice" for="slice" title="Which slice of the 3D world the side view shows (W / S)">
+        <span class="lbl">Slice</span>
+        <input type="range" id="slice" min="0" max="47" value="24">
+        <output id="slice-out" for="slice">24</output>
+      </label>
+      <span class="sep" aria-hidden="true"></span>
       <div class="seg speed" role="group" aria-label="Simulation speed">
         <button type="button" data-speed="0.5" aria-pressed="false">½×</button>
         <button type="button" data-speed="1" aria-pressed="true">1×</button>
@@ -148,6 +154,8 @@
       <h2 id="help-title">Paint the elements. See what they do.</h2>
       <p class="lead">Everything follows simple physics. Heavy things sink, liquids spread out, heat flows from hot to cold,
         and materials melt, boil, freeze and burn at their real temperatures. Mix things and see what happens.</p>
+      <p class="lead">There is one world. 3D shows all of it; 2D is a cut through it, like looking at the side of an ant farm.
+        Move the cut with the Slice slider or <kbd>W</kbd> <kbd>S</kbd>. Whatever you do in one view is there in the other.</p>
       <div class="cols">
         <div>
           <h3>2D side view</h3>
@@ -155,6 +163,7 @@
             <li><kbd>Left mouse</kbd> paint</li>
             <li><kbd>Right mouse</kbd> erase</li>
             <li><kbd>Scroll</kbd> brush size</li>
+            <li><kbd>W</kbd> <kbd>S</kbd> move the slice</li>
             <li><kbd>T</kbd> thermal camera</li>
           </ul>
         </div>

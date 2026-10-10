@@ -176,7 +176,9 @@ button { font: inherit; color: inherit; }
   user-select: none;
   -webkit-user-select: none;
 }
-.view2d { position: absolute; inset: 0; }
+/* Above and below the slice: sky and bedrock, so letterboxing blends in. */
+.view2d { position: absolute; inset: 0; background: linear-gradient(#e3a248 50%, #26241f 50%); }
+.slice input { width: 90px; }
 .sim2d, .glow2d {
   position: absolute;
   image-rendering: pixelated;
@@ -620,6 +622,8 @@ kbd {
   .inspector, .thermal-legend { display: none; }
   .hud { bottom: 10px; flex-wrap: nowrap; }
   .hud .seg, .hud .sep, #btn-view { display: none; }
+  .hud { flex-wrap: wrap; }
+  .brush input, .slice input { width: 70px; }
   .brush input { width: 90px; }
   .fps, #btn-step, .transport .sep:first-of-type { display: none; }
   .coach { top: 62px; bottom: auto; }
