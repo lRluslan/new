@@ -1,0 +1,508 @@
+// Sandgrove: app shell. Builds the interface, reads the mouse and keyboard,
+// runs the simulation clock and switches between the 2D and 3D worlds.
+
+import * as El from './elements.js';
+import { World } from './world.js';
+import { SCENES_2D, SCENES_3D } from './scenes.js';
+import { Renderer2D } from './render2d.js';
+import { drawSwatch } from './textures.js';
+
+const $ = sel => document.querySelector(sel);
+const app = $('#app');
+app.dataset.input = matchMedia('(pointer: coarse)').matches ? 'touch' : 'mouse';
+const stage = $('#stage');
+
+const store = {
+  get(key, fallback) { try { const v = localStorage.getItem('sandgrove.' + key); return v == null ? fallback : JSON.parse(v); } catch { return fallback; } },
+  set(key, value) { try { localStorage.setItem('sandgrove.' + key, JSON.stringify(value)); } catch { /* storage unavailable */ } },
+};
+
+const TOOLS = [
+  { id: 'erase', name: 'Eraser', key: 'E', desc: 'Removes anything it touches.' },
+  { id: 'heat', name: 'Heat', key: 'H', desc: 'Raises the temperature. Melts, boils and ignites things.' },
+  { id: 'cool', name: 'Cool', key: 'J', desc: 'Lowers the temperature, down to -200 °C. Freezes water.' },
+];
+const TOOL_ICONS = {
+  erase: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 10 9 4l4 4-6 6H4l-1-1z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M6 7l4 4" stroke="currentColor" stroke-width="1.5"/><path d="M8 14h6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>',
+  heat: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5c.5 2.4 3.5 3.8 3.5 7.2A3.5 3.5 0 0 1 4.5 8.7c0-1.6.8-2.6 1.6-3.4.1 1.3.7 2 1.4 2.3C7.3 5.3 7.4 3.4 8 1.5z" fill="currentColor"/></svg>',
+  cool: '<svg viewBox="0 0 16 16" aria-hidden="true"><g stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M8 1.5v13M2.4 4.75l11.2 6.5M2.4 11.25l11.2-6.5"/><path d="M6.3 2.8 8 4.3l1.7-1.5M6.3 13.2 8 11.7l1.7 1.5"/></g></svg>',
+};
+
+// ----- worlds -----
+const stageRect = stage.getBoundingClientRect();
+const cellPx = stageRect.width < 640 ? 3 : 4;
+const W2 = Math.max(120, Math.min(360, Math.round(stageRect.width / cellPx)));
+const H2 = Math.max(90, Math.min(230, Math.round(stageRect.height / cellPx)));
+const world2d = new World(W2, H2, 1);
+SCENES_2D.pond(world2d);
+const r2d = new Renderer2D(stage, world2d);
+let world3d = null, r3d = null, loading3d = null;
+
+const state = {
+  mode: '2d',
+  selected: { kind: 'el', id: El.SAND },
+  paused: false,
+  speed: store.get('speed', 1),
+  brush: { '2d': 5, '3d': 2 },
+  thermal: false,
+  painting: null,     // 'add' | 'erase' | 'heat' | 'cool' while a button is held
+  pointer: null,      // last pointer position over the stage
+  lastCell: null,
+  stepOnce: false,
+  acc: 0,
+};
+
+// ----- discoveries -----
+const found = new Set(store.get('found', []));
+for (const id of found) world2d.found[id] = 1;
+
+function addDiscovery(id) {
+  if (found.has(id)) return;
+  found.add(id);
+  store.set('found', [...found]);
+  world2d.found[id] = 1;
+  if (world3d) world3d.found[id] = 1;
+  const d = El.DISCOVERIES[id];
+  toast(d.title, d.recipe, d.text);
+  renderDiscoveries();
+}
+
+// ----- palette -----
+const palette = $('#palette');
+const elButtons = new Map();
+let keyIndex = 0;
+const keyFor = new Map();
+for (const group of El.PALETTE) {
+  const sec = document.createElement('section');
+  sec.className = 'group';
+  sec.innerHTML = `<h2>${group.cat}</h2><div class="grid"></div>`;
+  const grid = sec.querySelector('.grid');
+  for (const id of group.items) {
+    const e = El.ELEMENTS[id];
+    const b = document.createElement('button');
+    b.className = 'el';
+    b.type = 'button';
+    b.dataset.id = id;
+    const key = keyIndex < 10 ? String((keyIndex + 1) % 10) : '';
+    if (key) keyFor.set(key, id);
+    keyIndex++;
+    b.title = `${e.name}${key ? ` (${key})` : ''}`;
+    b.innerHTML = `<canvas width="10" height="10"></canvas><span>${e.name}</span>${key ? `<kbd>${key}</kbd>` : ''}`;
+    b.addEventListener('click', () => select({ kind: 'el', id }));
+    grid.append(b);
+    elButtons.set('el:' + id, b);
+  }
+  palette.append(sec);
+}
+{
+  const sec = document.createElement('section');
+  sec.className = 'group';
+  sec.innerHTML = '<h2>Tools</h2><div class="grid"></div>';
+  const grid = sec.querySelector('.grid');
+  for (const t of TOOLS) {
+    const b = document.createElement('button');
+    b.className = 'el tool tool-' + t.id;
+    b.type = 'button';
+    b.title = `${t.name} (${t.key})`;
+    b.innerHTML = `<i>${TOOL_ICONS[t.id]}</i><span>${t.name}</span><kbd>${t.key}</kbd>`;
+    b.addEventListener('click', () => select({ kind: 'tool', id: t.id }));
+    grid.append(b);
+    elButtons.set('tool:' + t.id, b);
+  }
+  palette.append(sec);
+}
+
+function drawSwatches() {
+  for (const [k, b] of elButtons) {
+    if (!k.startsWith('el:')) continue;
+    drawSwatch(b.querySelector('canvas'), +k.slice(3), state.mode);
+  }
+  drawSwatch($('#info-swatch'), state.selected.kind === 'el' ? state.selected.id : El.STONE, state.mode);
+}
+
+function fmtTemp(t) { return `${Math.round(t)} °C`; }
+
+function select(sel) {
+  state.selected = sel;
+  for (const [k, b] of elButtons) b.classList.toggle('on', k === `${sel.kind}:${sel.id}`);
+  const info = $('#info');
+  if (sel.kind === 'el') {
+    const e = El.ELEMENTS[sel.id];
+    const facts = [];
+    facts.push(['State', { 1: 'Solid', 2: 'Powder', 3: 'Liquid', 4: 'Gas' }[e.state]]);
+    facts.push(['Density', `${e.density.toLocaleString('en-US')} kg/m³`]);
+    if (e.temp !== undefined) facts.push(['Starts at', fmtTemp(e.temp)]);
+    if (e.hot) facts.push([{ [El.STEAM]: 'Boils', [El.GLASS]: 'Fuses' }[e.hot[1]] || 'Melts', fmtTemp(Math.floor(e.hot[0]))]);
+    if (e.cold) facts.push([{ [El.ICE]: 'Freezes', [El.WATER]: 'Condenses' }[e.cold[1]] || 'Hardens', fmtTemp(Math.floor(e.cold[0]))]);
+    if (e.ignite) facts.push([sel.id === El.GUNPOWDER ? 'Explodes' : 'Ignites', fmtTemp(e.ignite)]);
+    info.querySelector('h3').textContent = e.name;
+    info.querySelector('p').textContent = e.desc;
+    info.querySelector('dl').innerHTML = facts.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('');
+    $('#info-swatch').hidden = false;
+    $('#info-icon').hidden = true;
+    drawSwatch($('#info-swatch'), sel.id, state.mode);
+  } else {
+    const t = TOOLS.find(t => t.id === sel.id);
+    info.querySelector('h3').textContent = t.name;
+    info.querySelector('p').textContent = t.desc;
+    info.querySelector('dl').innerHTML = '';
+    $('#info-swatch').hidden = true;
+    const icon = $('#info-icon');
+    icon.hidden = false;
+    icon.className = 'info-icon tool-' + t.id;
+    icon.innerHTML = TOOL_ICONS[t.id];
+  }
+}
+
+// ----- controls -----
+const brushInput = $('#brush'), brushOut = $('#brush-out');
+function syncBrush() {
+  const max = state.mode === '2d' ? 24 : 6;
+  brushInput.min = state.mode === '2d' ? 1 : 0;
+  brushInput.max = max;
+  brushInput.value = state.brush[state.mode];
+  brushOut.textContent = state.brush[state.mode];
+}
+brushInput.addEventListener('input', () => { state.brush[state.mode] = +brushInput.value; brushOut.textContent = brushInput.value; });
+
+function setSpeed(s) {
+  state.speed = s;
+  store.set('speed', s);
+  for (const b of document.querySelectorAll('[data-speed]')) b.setAttribute('aria-pressed', String(+b.dataset.speed === s));
+}
+for (const b of document.querySelectorAll('[data-speed]')) b.addEventListener('click', () => setSpeed(+b.dataset.speed));
+
+function setPaused(p) {
+  state.paused = p;
+  const btn = $('#btn-play');
+  btn.setAttribute('aria-pressed', String(p));
+  btn.title = p ? 'Play (Space)' : 'Pause (Space)';
+  btn.querySelector('.i-pause').hidden = p;
+  btn.querySelector('.i-play').hidden = !p;
+  $('#paused-badge').hidden = !p;
+}
+$('#btn-play').addEventListener('click', () => setPaused(!state.paused));
+$('#btn-step').addEventListener('click', () => { setPaused(true); state.stepOnce = true; });
+$('#btn-reset').addEventListener('click', resetScene);
+$('#btn-clear').addEventListener('click', clearScene);
+
+function resetScene() {
+  if (state.mode === '2d') SCENES_2D.pond(world2d);
+  else if (world3d) SCENES_3D.glade(world3d);
+}
+function clearScene() {
+  if (state.mode === '2d') SCENES_2D.empty(world2d);
+  else if (world3d) SCENES_3D.empty(world3d);
+}
+
+$('#btn-thermal').addEventListener('click', () => {
+  state.thermal = !state.thermal;
+  $('#btn-thermal').setAttribute('aria-pressed', String(state.thermal));
+  $('#thermal-legend').hidden = !state.thermal;
+});
+$('#btn-orbit').addEventListener('click', () => {
+  if (!r3d) return;
+  r3d.controls.autoRotate = !r3d.controls.autoRotate;
+  $('#btn-orbit').setAttribute('aria-pressed', String(r3d.controls.autoRotate));
+});
+$('#btn-view').addEventListener('click', () => r3d && r3d.resetView());
+for (const b of document.querySelectorAll('[data-pixel]')) b.addEventListener('click', () => {
+  const s = +b.dataset.pixel;
+  for (const o of document.querySelectorAll('[data-pixel]')) o.setAttribute('aria-pressed', String(o === b));
+  store.set('pixel', s);
+  if (r3d) r3d.setPixelScale(s);
+});
+
+// ----- panels -----
+function openPanel(id) {
+  for (const p of document.querySelectorAll('.panel')) p.hidden = p.id !== id;
+  $('#scrim').hidden = false;
+}
+function closePanels() {
+  for (const p of document.querySelectorAll('.panel')) p.hidden = true;
+  $('#scrim').hidden = true;
+  store.set('welcomed', true);
+}
+$('#btn-help').addEventListener('click', () => openPanel('help'));
+$('#disc-chip').addEventListener('click', () => openPanel('disc-panel'));
+$('#scrim').addEventListener('click', closePanels);
+for (const b of document.querySelectorAll('.panel .close')) b.addEventListener('click', closePanels);
+$('#help-start').addEventListener('click', closePanels);
+
+function renderDiscoveries() {
+  $('#disc-count').textContent = found.size;
+  $('#disc-total').textContent = El.DISCOVERIES.length;
+  $('#disc-bar').style.setProperty('--p', found.size / El.DISCOVERIES.length);
+  $('#disc-summary').textContent = `${found.size} of ${El.DISCOVERIES.length} reactions found`;
+  $('#disc-list').innerHTML = El.DISCOVERIES.map(d => {
+    const ok = found.has(d.id);
+    return `<li class="${ok ? 'found' : 'locked'}">
+      <span class="mark" aria-hidden="true"></span>
+      <div><h4>${ok ? d.title : 'Undiscovered'}</h4>
+      <p class="recipe">${ok ? d.recipe : 'Hint'}</p>
+      <p>${ok ? d.text : d.hint}</p></div></li>`;
+  }).join('');
+}
+$('#disc-reset').addEventListener('click', () => {
+  const btn = $('#disc-reset');
+  if (btn.dataset.confirm !== '1') {
+    btn.dataset.confirm = '1';
+    btn.textContent = 'Click again to forget all';
+    setTimeout(() => { btn.dataset.confirm = ''; btn.textContent = 'Reset progress'; }, 3000);
+    return;
+  }
+  btn.dataset.confirm = '';
+  btn.textContent = 'Reset progress';
+  found.clear();
+  store.set('found', []);
+  world2d.found.fill(0);
+  if (world3d) world3d.found.fill(0);
+  renderDiscoveries();
+});
+
+const toasts = $('#toasts');
+function toast(title, recipe, text) {
+  const t = document.createElement('div');
+  t.className = 'toast';
+  t.innerHTML = `<div class="star" aria-hidden="true"></div><div><small>New discovery</small><b>${title}</b><span>${recipe}</span></div>`;
+  t.title = text;
+  toasts.prepend(t);
+  while (toasts.children.length > 3) toasts.lastChild.remove();
+  setTimeout(() => t.classList.add('out'), 4200);
+  setTimeout(() => t.remove(), 4700);
+}
+function notice(text) {
+  const t = document.createElement('div');
+  t.className = 'toast notice';
+  t.innerHTML = `<div><b>${text}</b></div>`;
+  toasts.prepend(t);
+  setTimeout(() => t.classList.add('out'), 5200);
+  setTimeout(() => t.remove(), 5700);
+}
+
+// ----- mode switching -----
+async function setMode(mode) {
+  if (mode === state.mode && (mode === '2d' || r3d)) return;
+  if (mode === '3d' && !r3d) {
+    if (!loading3d) loading3d = load3d();
+    $('#loading').hidden = false;
+    try { await loading3d; } catch (err) {
+      console.error(err);
+      loading3d = null;
+      $('#loading').hidden = true;
+      notice('The 3D engine could not load. Check your internet connection and try again.');
+      return;
+    }
+    $('#loading').hidden = true;
+  }
+  state.mode = mode;
+  app.dataset.mode = mode;
+  state.painting = null;
+  for (const b of document.querySelectorAll('[data-mode-btn]')) b.setAttribute('aria-selected', String(b.dataset.modeBtn === mode));
+  r2d.setVisible(mode === '2d');
+  if (r3d) r3d.setVisible(mode === '3d');
+  syncBrush();
+  drawSwatches();
+  store.set('mode', mode);
+  resize();
+}
+async function load3d() {
+  const { Renderer3D } = await import('./render3d.js');
+  world3d = new World(64, 48, 64);
+  for (const id of found) world3d.found[id] = 1;
+  SCENES_3D.glade(world3d);
+  r3d = new Renderer3D(stage, world3d);
+  r3d.setPixelScale(store.get('pixel', 2));
+  for (const o of document.querySelectorAll('[data-pixel]')) o.setAttribute('aria-pressed', String(+o.dataset.pixel === r3d.pixelScale));
+  r3d.setVisible(false);
+  attach3dInput(r3d.canvas);
+  resize();
+  r3d.updateChunks(Infinity);
+}
+for (const b of document.querySelectorAll('[data-mode-btn]')) b.addEventListener('click', () => setMode(b.dataset.modeBtn));
+
+// ----- input -----
+function modeForButton(button) {
+  if (button === 2) return 'erase';
+  return state.selected.kind === 'tool' ? state.selected.id : 'add';
+}
+
+r2d.canvas.addEventListener('contextmenu', e => e.preventDefault());
+r2d.canvas.addEventListener('pointerdown', e => {
+  if (e.button !== 0 && e.button !== 2) return;
+  r2d.canvas.setPointerCapture(e.pointerId);
+  state.painting = modeForButton(e.button);
+  state.pointer = { x: e.clientX, y: e.clientY };
+  state.lastCell = null;
+  dismissCoach();
+});
+r2d.canvas.addEventListener('pointermove', e => { state.pointer = { x: e.clientX, y: e.clientY }; });
+r2d.canvas.addEventListener('pointerleave', () => { if (!state.painting) state.pointer = null; });
+const stopPaint = () => { state.painting = null; state.lastCell = null; };
+window.addEventListener('pointerup', stopPaint);
+window.addEventListener('pointercancel', stopPaint);
+
+function attach3dInput(canvas) {
+  canvas.addEventListener('contextmenu', e => e.preventDefault());
+  canvas.addEventListener('pointerdown', e => {
+    state.pointer = { x: e.clientX, y: e.clientY };
+    if (e.button !== 0) return;
+    if (e.pointerType === 'touch' && !e.isPrimary) { stopPaint(); return; }
+    state.painting = modeForButton(0);
+    dismissCoach();
+  });
+  canvas.addEventListener('pointermove', e => { state.pointer = { x: e.clientX, y: e.clientY }; });
+  canvas.addEventListener('pointerleave', () => { if (!state.painting) state.pointer = null; });
+}
+
+function paint2d() {
+  if (!state.pointer) { r2d.cursor = null; return null; }
+  const c = r2d.toCell(state.pointer.x, state.pointer.y);
+  const r = state.brush['2d'];
+  r2d.cursor = c.inside ? { x: c.x, y: c.y, r } : null;
+  if (state.painting) {
+    const from = state.lastCell || c;
+    const steps = Math.max(1, Math.abs(c.x - from.x), Math.abs(c.y - from.y));
+    const every = Math.max(1, Math.floor(r / 2));
+    const t = state.selected.kind === 'el' ? state.selected.id : 0;
+    for (let s = 0; s <= steps; s += every) {
+      const x = Math.round(from.x + (c.x - from.x) * s / steps), y = Math.round(from.y + (c.y - from.y) * s / steps);
+      world2d.paint(x, y, 0, r, state.painting, t);
+    }
+    state.lastCell = c;
+  }
+  return c.inside ? world2d.index(c.x, c.y) : null;
+}
+
+function paint3d() {
+  if (!state.pointer) { r3d.showCursor(null); return null; }
+  const p = r3d.pick(state.pointer.x, state.pointer.y);
+  const r = state.brush['3d'];
+  const mode = state.painting || (state.selected.kind === 'tool' ? state.selected.id : 'add');
+  const target = p ? (mode === 'add' ? p.place : (p.hit || p.place)) : null;
+  r3d.showCursor(target, r);
+  if (state.painting && target) {
+    const t = state.selected.kind === 'el' ? state.selected.id : 0;
+    world3d.paint(target[0], target[1], target[2], r + 0.5, state.painting, t);
+  }
+  const look = p && (p.hit || p.place);
+  return look ? world3d.index(look[0], look[1], look[2]) : null;
+}
+
+const KEY_TOOLS = { e: 'erase', h: 'heat', j: 'cool' };
+window.addEventListener('keydown', e => {
+  if (e.target instanceof HTMLInputElement && e.target.type !== 'range') return;
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  const k = e.key.toLowerCase();
+  if (k === 'escape') { closePanels(); return; }
+  if (k === ' ') { e.preventDefault(); setPaused(!state.paused); return; }
+  if (k === '.') { setPaused(true); state.stepOnce = true; return; }
+  if (keyFor.has(k)) { select({ kind: 'el', id: keyFor.get(k) }); return; }
+  if (KEY_TOOLS[k]) { select({ kind: 'tool', id: KEY_TOOLS[k] }); return; }
+  if (k === 't' && state.mode === '2d') { $('#btn-thermal').click(); return; }
+  if (k === 'm') { setMode(state.mode === '2d' ? '3d' : '2d'); return; }
+  if (k === 'r') { resetScene(); return; }
+  if (k === 'c') { clearScene(); return; }
+  if (k === '?' || k === '/') { openPanel('help'); return; }
+  if (k === '[' || k === ']') {
+    const d = k === '[' ? -1 : 1;
+    const max = state.mode === '2d' ? 24 : 6, min = state.mode === '2d' ? 1 : 0;
+    state.brush[state.mode] = Math.max(min, Math.min(max, state.brush[state.mode] + d));
+    syncBrush();
+    return;
+  }
+  if (state.mode === '3d' && r3d) {
+    if (k === 'a' || k === 'arrowleft') r3d.orbit(-0.12);
+    if (k === 'd' || k === 'arrowright') r3d.orbit(0.12);
+  }
+});
+stage.addEventListener('wheel', e => {
+  if (state.mode !== '2d') return;
+  e.preventDefault();
+  state.brush['2d'] = Math.max(1, Math.min(24, state.brush['2d'] + (e.deltaY > 0 ? -1 : 1)));
+  syncBrush();
+}, { passive: false });
+
+// ----- coach mark -----
+const coach = $('#coach');
+if (store.get('painted', false)) coach.hidden = true;
+function dismissCoach() {
+  if (coach.hidden) return;
+  coach.classList.add('out');
+  setTimeout(() => { coach.hidden = true; }, 400);
+  store.set('painted', true);
+}
+
+// ----- inspector -----
+const insName = $('#ins-name'), insTemp = $('#ins-temp'), inspector = $('#inspector');
+let lastIns = '';
+function inspect(world, i) {
+  let text = '';
+  if (i == null) { inspector.classList.add('idle'); text = 'idle'; }
+  else {
+    inspector.classList.remove('idle');
+    const t = world.type[i];
+    const name = El.ELEMENTS[t].name;
+    const burning = world.flags[i] & 4 ? ' · burning' : '';
+    text = name + burning + '|' + fmtTemp(world.temp[i]);
+  }
+  if (text === lastIns) return;
+  lastIns = text;
+  if (i != null) {
+    const [a, b] = text.split('|');
+    insName.textContent = a;
+    insTemp.textContent = b;
+  }
+}
+
+// ----- layout -----
+function resize() {
+  const r = stage.getBoundingClientRect();
+  r2d.resize(r.width, r.height);
+  if (r3d) r3d.resize(r.width, r.height);
+}
+new ResizeObserver(resize).observe(stage);
+
+// ----- main loop -----
+const RATE = { '2d': 60, '3d': 40 };
+let last = performance.now();
+let fpsT = 0, fpsN = 0;
+function frame(now) {
+  const dt = Math.min(0.1, (now - last) / 1000);
+  last = now;
+  const is2d = state.mode === '2d';
+  const world = is2d ? world2d : world3d;
+  if (world) {
+    const hover = is2d ? paint2d() : paint3d();
+    if (!state.paused) {
+      state.acc += dt * state.speed * RATE[state.mode];
+      let n = 0;
+      while (state.acc >= 1 && n < 3) { world.step(); state.acc -= 1; n++; }
+      if (state.acc > 3) state.acc = 0;
+    } else if (state.stepOnce) {
+      world.step();
+      state.stepOnce = false;
+    }
+    if (is2d) r2d.render(now / 1000, state.thermal);
+    else r3d.render(dt, !state.paused);
+    while (world.events.length) addDiscovery(world.events.shift());
+    inspect(world, hover);
+  }
+  fpsT += dt; fpsN++;
+  if (fpsT > 1) { $('#fps').textContent = `${Math.round(fpsN / fpsT)} fps`; fpsT = 0; fpsN = 0; }
+  requestAnimationFrame(frame);
+}
+
+// Handy for poking at the simulation from the browser console.
+window.sandgrove = { get world2d() { return world2d; }, get world3d() { return world3d; }, get r3d() { return r3d; }, El };
+
+// ----- start -----
+select(state.selected);
+setSpeed(state.speed);
+syncBrush();
+drawSwatches();
+renderDiscoveries();
+resize();
+if (!store.get('welcomed', false)) openPanel('help');
+requestAnimationFrame(frame);
+if (store.get('mode', '2d') === '3d') setMode('3d');

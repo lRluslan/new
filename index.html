@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Sandgrove</title>
+<meta name="description" content="A falling-sand physics sandbox with a 2D pixel-art mode and a 3D voxel mode.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&family=Pixelify+Sans:wght@500;600;700&family=Silkscreen&display=swap">
+<link rel="stylesheet" href="styles.css">
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+<div class="app" id="app" data-mode="2d">
+  <aside class="rail" aria-label="Elements">
+    <div class="brand">
+      <svg class="logo" viewBox="0 0 16 16" aria-hidden="true" shape-rendering="crispEdges">
+        <rect x="7" y="1" width="2" height="2" fill="currentColor"/>
+        <rect x="9" y="4" width="2" height="2" fill="currentColor" opacity=".7"/>
+        <rect x="6" y="6" width="2" height="2" fill="currentColor" opacity=".85"/>
+        <rect x="5" y="10" width="6" height="2" fill="currentColor"/>
+        <rect x="3" y="12" width="10" height="2" fill="currentColor" opacity=".8"/>
+        <rect x="1" y="14" width="14" height="2" fill="currentColor" opacity=".6"/>
+      </svg>
+      <div>
+        <h1>Sandgrove</h1>
+        <p>Falling-sand physics lab</p>
+      </div>
+    </div>
+    <div class="palette" id="palette"></div>
+    <div class="info" id="info" aria-live="polite">
+      <div class="info-head">
+        <canvas id="info-swatch" width="10" height="10"></canvas>
+        <span id="info-icon" class="info-icon" hidden></span>
+        <h3>Sand</h3>
+      </div>
+      <p></p>
+      <dl></dl>
+    </div>
+  </aside>
+
+  <main class="stage" id="stage">
+    <div class="vignette" aria-hidden="true"></div>
+
+    <header class="topbar">
+      <div class="seg mode" role="tablist" aria-label="View mode">
+        <button type="button" role="tab" data-mode-btn="2d" aria-selected="true"><b>2D</b><small>Side view</small></button>
+        <button type="button" role="tab" data-mode-btn="3d" aria-selected="false"><b>3D</b><small>Voxel world</small></button>
+      </div>
+      <div class="bar transport">
+        <button type="button" id="btn-play" class="icon" title="Pause (Space)" aria-label="Pause or play" aria-pressed="false">
+          <svg class="i-pause" viewBox="0 0 16 16" aria-hidden="true"><rect x="4" y="3" width="3" height="10" rx="1" fill="currentColor"/><rect x="9" y="3" width="3" height="10" rx="1" fill="currentColor"/></svg>
+          <svg class="i-play" viewBox="0 0 16 16" aria-hidden="true" hidden><path d="M5 3.2v9.6a.6.6 0 0 0 .9.5l7.6-4.8a.6.6 0 0 0 0-1L5.9 2.7a.6.6 0 0 0-.9.5z" fill="currentColor"/></svg>
+        </button>
+        <button type="button" id="btn-step" class="icon" title="Step one tick (.)" aria-label="Step one tick">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 3.5v9l6-4.5z" fill="currentColor"/><rect x="11" y="3.5" width="2" height="9" rx=".8" fill="currentColor"/></svg>
+        </button>
+        <span class="sep" aria-hidden="true"></span>
+        <button type="button" id="btn-reset" class="icon" title="Reset the scene (R)" aria-label="Reset the scene">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.2 8a4.8 4.8 0 1 0 1.5-3.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M3.5 2.2v3.2h3.2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <button type="button" id="btn-clear" class="icon" title="Clear everything (C)" aria-label="Clear everything">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.3a1 1 0 0 0 1 .9h3.8a1 1 0 0 0 1-.9l.6-8.3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <span class="sep" aria-hidden="true"></span>
+        <button type="button" id="btn-help" class="icon" title="How to play (?)" aria-label="How to play">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6 6.2a2 2 0 1 1 2.8 1.8c-.5.3-.8.7-.8 1.3v.4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><circle cx="8" cy="12.2" r="1" fill="currentColor"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <button type="button" class="disc-chip" id="disc-chip" aria-label="Open discoveries">
+      <span class="label">Discoveries</span>
+      <span class="count"><b id="disc-count">0</b>/<span id="disc-total">20</span></span>
+      <span class="meter" id="disc-bar" aria-hidden="true"></span>
+    </button>
+
+    <div class="paused" id="paused-badge" hidden>Paused</div>
+
+    <div class="toasts" id="toasts" aria-live="polite"></div>
+
+    <div class="coach" id="coach">
+      <b>Pick an element, then paint.</b>
+      <span class="hint-2d mouse">Left mouse paints. Right mouse erases. Scroll changes the brush size.</span>
+      <span class="hint-3d mouse">Left mouse paints. Right-drag turns the camera. Scroll zooms.</span>
+      <span class="hint-2d touch">Drag a finger to paint. Use the Eraser to remove things.</span>
+      <span class="hint-3d touch">Drag one finger to paint. Use two fingers to turn and zoom.</span>
+    </div>
+
+    <div class="inspector idle" id="inspector">
+      <span class="dot" aria-hidden="true"></span>
+      <span id="ins-name">Point at something</span>
+      <span class="temp" id="ins-temp"></span>
+    </div>
+
+    <div class="thermal-legend" id="thermal-legend" hidden>
+      <span>-50 °C</span><i aria-hidden="true"></i><span>1500 °C</span>
+    </div>
+
+    <div class="hud bar">
+      <label class="brush" for="brush">
+        <span class="lbl">Brush</span>
+        <input type="range" id="brush" min="1" max="24" value="5">
+        <output id="brush-out" for="brush">5</output>
+      </label>
+      <span class="sep" aria-hidden="true"></span>
+      <div class="seg speed" role="group" aria-label="Simulation speed">
+        <button type="button" data-speed="0.5" aria-pressed="false">½×</button>
+        <button type="button" data-speed="1" aria-pressed="true">1×</button>
+        <button type="button" data-speed="2" aria-pressed="false">2×</button>
+      </div>
+      <span class="sep" aria-hidden="true"></span>
+      <button type="button" class="toggle only-2d" id="btn-thermal" aria-pressed="false" title="Thermal camera (T)">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6.5 2.5a1.5 1.5 0 0 1 3 0v6.4a3 3 0 1 1-3 0z" fill="none" stroke="currentColor" stroke-width="1.4"/><circle cx="8" cy="11.5" r="1.4" fill="currentColor"/></svg>
+        Thermal
+      </button>
+      <button type="button" class="toggle only-3d" id="btn-orbit" aria-pressed="false" title="Slowly circle the scene">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><ellipse cx="8" cy="8" rx="6" ry="2.6" fill="none" stroke="currentColor" stroke-width="1.4"/><circle cx="8" cy="8" r="1.6" fill="currentColor"/></svg>
+        Orbit
+      </button>
+      <button type="button" class="toggle only-3d" id="btn-view" title="Reset the camera">View</button>
+      <div class="seg pixel only-3d" role="group" aria-label="Pixel size">
+        <button type="button" data-pixel="1" aria-pressed="false" title="Sharp">1px</button>
+        <button type="button" data-pixel="2" aria-pressed="true" title="Pixel art">2px</button>
+        <button type="button" data-pixel="3" aria-pressed="false" title="Chunky">3px</button>
+      </div>
+      <span class="fps" id="fps" aria-hidden="true"></span>
+    </div>
+
+    <div class="loading" id="loading" hidden>
+      <div class="spinner" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+      <p>Growing the forest…</p>
+    </div>
+
+    <div class="scrim" id="scrim" hidden></div>
+
+    <section class="panel" id="help" hidden aria-labelledby="help-title">
+      <button type="button" class="close" aria-label="Close">×</button>
+      <p class="eyebrow">How to play</p>
+      <h2 id="help-title">Paint the elements. See what they do.</h2>
+      <p class="lead">Everything follows simple physics. Heavy things sink, liquids spread out, heat flows from hot to cold,
+        and materials melt, boil, freeze and burn at their real temperatures. Mix things and see what happens.</p>
+      <div class="cols">
+        <div>
+          <h3>2D side view</h3>
+          <ul class="keys">
+            <li><kbd>Left mouse</kbd> paint</li>
+            <li><kbd>Right mouse</kbd> erase</li>
+            <li><kbd>Scroll</kbd> brush size</li>
+            <li><kbd>T</kbd> thermal camera</li>
+          </ul>
+        </div>
+        <div>
+          <h3>3D voxel world</h3>
+          <ul class="keys">
+            <li><kbd>Left mouse</kbd> paint</li>
+            <li><kbd>Right-drag</kbd> turn camera</li>
+            <li><kbd>Scroll</kbd> zoom · <kbd>Middle-drag</kbd> pan</li>
+            <li><kbd>A</kbd> <kbd>D</kbd> orbit · two fingers on touch</li>
+          </ul>
+        </div>
+        <div>
+          <h3>Everywhere</h3>
+          <ul class="keys">
+            <li><kbd>1</kbd>–<kbd>0</kbd> elements · <kbd>E</kbd> <kbd>H</kbd> <kbd>J</kbd> tools</li>
+            <li><kbd>[</kbd> <kbd>]</kbd> brush size</li>
+            <li><kbd>Space</kbd> pause · <kbd>.</kbd> step</li>
+            <li><kbd>M</kbd> switch 2D/3D · <kbd>R</kbd> reset · <kbd>C</kbd> clear</li>
+          </ul>
+        </div>
+      </div>
+      <p class="tip">Try this first: pour lava into the pond, drop a seed on the grass, or set the tree on fire with the Heat tool.</p>
+      <button type="button" class="primary" id="help-start">Start playing</button>
+    </section>
+
+    <section class="panel discoveries" id="disc-panel" hidden aria-labelledby="disc-title">
+      <button type="button" class="close" aria-label="Close">×</button>
+      <p class="eyebrow">Discoveries</p>
+      <h2 id="disc-title">Reaction notebook</h2>
+      <p class="lead" id="disc-summary"></p>
+      <ul class="disc-list" id="disc-list"></ul>
+      <button type="button" class="ghost" id="disc-reset">Reset progress</button>
+    </section>
+  </main>
+</div>
+<script type="module" src="src/main.js"></script>
+</body>
+</html>
