@@ -10,9 +10,10 @@
 
 import {
   EMPTY, STONE, DIRT, SAND, GUNPOWDER, SEED, WATER, OIL, ACID, LAVA, SMOKE,
-  FIRE, WOOD, PLANT, OBSIDIAN, ASH, ICE, SNOW, SALT, BRINE, MUD, COAL, COUNT, SOLID, POWDER, LIQUID, GAS, AMBIENT, FIRE_TEMP, DISC,
+  FIRE, WOOD, PLANT, OBSIDIAN, ASH, ICE, SNOW, SALT, BRINE, MUD, COAL,
+  METAL, RUST, MERCURY, FUSE, THERMITE, CLONER, DRAIN, GLASS, COUNT, SOLID, POWDER, LIQUID, GAS, AMBIENT, FIRE_TEMP, DISC,
   STATE, DENS, K, CAP, TEMP0, HOT_AT, HOT_TO, HOT_DISC, COLD_AT, COLD_TO, COLD_DISC, LATENT_HOT, LATENT_COLD,
-  IGNITE, BURN_TIME, BURN_HEAT, ASH_CHANCE, SLIDE, FLOW, VISC, RISE, LIFE_MIN, LIFE_SPAN,
+  IGNITE, BURN_TIME, BURN_HEAT, ASH_CHANCE, BURN_TO, OWN_OXYGEN, SLIDE, FLOW, VISC, RISE, LIFE_MIN, LIFE_SPAN,
   HARD, GLOWS,
 } from './elements.js';
 
@@ -47,7 +48,8 @@ const WAKE_T = new Float32Array(COUNT);
 for (let t = 1; t < COUNT; t++) {
   BLOCKS[t] = STATE[t] === SOLID || STATE[t] === POWDER ? 1 : 0;
   BLOCKS_OR_LIQUID[t] = BLOCKS[t] || STATE[t] === LIQUID ? 1 : 0;
-  CAN_SLEEP[t] = BLOCKS[t] && t !== SEED && t !== SALT ? 1 : 0; // seeds and salt keep reacting
+  // Seeds, salt and the machines keep working, so they never sleep.
+  CAN_SLEEP[t] = BLOCKS[t] && t !== SEED && t !== SALT && t !== CLONER && t !== DRAIN ? 1 : 0;
   WAKE_T[t] = Math.min(IGNITE[t] || Infinity, GLOWS[t] ? Infinity : 525);
 }
 
@@ -69,7 +71,7 @@ export class World {
     this.vz = new Float32Array(N);
     this.stamp = new Uint8Array(N);
     this.clock = 0;
-    this.found = new Uint8Array(32);
+    this.found = new Uint8Array(64);
     this.events = [];
     this.steps = 0;
     this.quiet = 0;   // steps to ignore discoveries for, while a new scene settles
@@ -362,14 +364,15 @@ export class World {
     } else if (IGNITE[t] && T >= IGNITE[t]) {
       // Gunpowder carries its own oxidiser. Everything else needs air to catch fire.
       if (t === GUNPOWDER) { this.explode(x, y, z); return; }
-      if (!this.hasAir(i, x, y, z)) {
+      if (!OWN_OXYGEN[t] && !this.hasAir(i, x, y, z)) {
         // Wood that is hot but cannot reach air chars into coal.
         if (t === WOOD) { this.morph(i, COAL); this.discover(DISC.CHARCOAL); return; }
         return this.moveOnly(i, t, x, y, z);
       }
       this.flags[i] |= BURNING;
       this.life[i] = BURN_TIME[t] * (0.6 + Math.random() * 0.8);
-      this.discover(t === OIL ? DISC.OIL_FIRE : t === WOOD || t === COAL ? DISC.BURN_WOOD : DISC.WILDFIRE);
+      this.discover(t === OIL ? DISC.OIL_FIRE : t === WOOD || t === COAL ? DISC.BURN_WOOD
+        : t === FUSE ? DISC.FUSE : t === THERMITE ? DISC.THERMITE : DISC.WILDFIRE);
     }
 
     const s = STATE[t];
@@ -390,7 +393,9 @@ export class World {
         this.updateGas(i, t, x, y, z);
         break;
       case SOLID:
-        if (t === PLANT) this.growPlant(i, x, y, z);
+        if (t === CLONER) this.cloner(i, x, y, z);
+        else if (t === DRAIN) this.drain(i, x, y, z);
+        else if (t === PLANT) this.growPlant(i, x, y, z);
         else if (t === WOOD && (this.flags[i] & GROWING)) this.growTree(i, x, y, z);
         break;
     }
@@ -437,8 +442,9 @@ export class World {
   }
 
   burn(i, t, x, y, z) {
-    // Fire needs air. Buried fuel stops making heat and soon goes out.
-    if (!this.hasAir(i, x, y, z)) {
+    // Fire needs air. Buried fuel stops making heat and soon goes out
+    // (thermite brings its own oxygen, so it keeps going).
+    if (!OWN_OXYGEN[t] && !this.hasAir(i, x, y, z)) {
       if (Math.random() < 0.1) { this.flags[i] &= ~BURNING; this.temp[i] = Math.min(this.temp[i], IGNITE[t] - 20); }
       return false;
     }
@@ -464,7 +470,8 @@ export class World {
     }
 
     if (life <= 0) {
-      if (Math.random() < ASH_CHANCE[t]) this.morph(i, ASH);
+      if (BURN_TO[t]) this.morph(i, BURN_TO[t]);            // thermite leaves molten iron
+      else if (Math.random() < ASH_CHANCE[t]) this.morph(i, ASH);
       else this.set(i, FIRE, FIRE_TEMP);
       return true;
     }
@@ -530,6 +537,14 @@ export class World {
       const k = this.slideDown(i, t, x, z);
       if (k >= 0) return k;
     }
+    // Water touching metal slowly rusts it; salt water is much faster.
+    if ((t === WATER || t === BRINE) && this.hasNeighbor(i, x, y, z, METAL)) {
+      if (Math.random() < (t === BRINE ? 0.02 : 0.004)) {
+        const n = this.randomNeighbor(i, x, y, z);
+        if (n >= 0 && this.type[n] === METAL) { this.morph(n, RUST); this.discover(DISC.RUST); }
+      }
+      return this.spread(i, t, x, y, z); // stays awake while it has metal to work on
+    }
     const s = this.spread(i, t, x, y, z);
     // Standing water slowly soaks into bare soil underneath, turning it to mud.
     if (s === i && t === WATER && y > 0 && this.type[i - this.L] === DIRT && Math.random() < 0.1) {
@@ -550,7 +565,11 @@ export class World {
     const L = this.L, ty = this.type;
     if (y === 0) { this.vy[i] = 0; return -1; }
     const below = ty[i - L];
-    if (!this.canEnter(t, below)) { this.vy[i] = 0; return -1; }
+    if (!this.canEnter(t, below)) {
+      if (below === MERCURY && t !== MERCURY && this.vy[i] < -0.5) this.discover(DISC.MERCURY_FLOAT);
+      this.vy[i] = 0;
+      return -1;
+    }
     if (STATE[below] === LIQUID) {
       if (STATE[t] === POWDER) this.discover(DISC.SINK);
       else if (below === OIL && t === WATER) this.discover(DISC.FLOAT);
@@ -782,6 +801,64 @@ export class World {
       this.discover(DISC.DEICE);
     }
     return false;
+  }
+
+  // Cloner: remembers the first thing that touches it, then keeps making it.
+  cloner(i, x, y, z) {
+    const kept = this.life[i];
+    if (!kept) {
+      // Not set yet: look at every side for something to copy.
+      const { W, H, D, L, type } = this;
+      const near = [x > 0 ? i - 1 : -1, x < W - 1 ? i + 1 : -1, y > 0 ? i - L : -1, y < H - 1 ? i + L : -1,
+        z > 0 ? i - W : -1, z < D - 1 ? i + W : -1];
+      for (const n of near) {
+        const o = n >= 0 ? type[n] : EMPTY;
+        if (o !== EMPTY && o !== CLONER && o !== DRAIN) { this.life[i] = o; return; }
+      }
+      return;
+    }
+    const n = this.randomNeighbor(i, x, y, z);
+    if (n >= 0 && this.type[n] === EMPTY && Math.random() < 0.3) this.set(n, kept);
+  }
+
+  // Drain: swallows whatever touches it.
+  drain(i, x, y, z) {
+    const n = this.randomNeighbor(i, x, y, z);
+    if (n < 0) return;
+    const o = this.type[n];
+    if (o !== EMPTY && o !== CLONER && o !== DRAIN) this.set(n, EMPTY, AMBIENT);
+  }
+
+  // A lightning bolt from the sky down to the first thing it meets at (x, z).
+  // It leaves a short-lived trail of fire and a blast of heat where it lands.
+  strike(x, z) {
+    const { W, H, D, L, type } = this;
+    if (x < 0 || x >= W || z < 0 || z >= D) return null;
+    let y = H - 1;
+    while (y > 0 && (type[x + W * (z + D * y)] === EMPTY || STATE[type[x + W * (z + D * y)]] === GAS)) y--;
+    const hitY = y;
+    // The jagged trail.
+    let bx = x, bz = z;
+    for (let yy = H - 1; yy > hitY; yy--) {
+      if (Math.random() < 0.3) bx = Math.max(0, Math.min(W - 1, bx + (Math.random() < 0.5 ? -1 : 1)));
+      if (this.is3D && Math.random() < 0.3) bz = Math.max(0, Math.min(D - 1, bz + (Math.random() < 0.5 ? -1 : 1)));
+      const j = bx + W * (bz + D * yy);
+      if (type[j] === EMPTY) { this.set(j, FIRE, 1500); this.life[j] = 4 + ((Math.random() * 4) | 0); }
+    }
+    // The strike: very hot for a moment around the impact point.
+    for (let dy = -2; dy <= 1; dy++) for (let dz = -2; dz <= 2; dz++) for (let dx = -2; dx <= 2; dx++) {
+      const nx = x + dx, ny = hitY + dy, nz = z + dz;
+      if (nx < 0 || nx >= W || ny < 0 || ny >= H || nz < 0 || nz >= D) continue;
+      if (!this.is3D && dz !== 0) continue;
+      const j = nx + W * (nz + D * ny);
+      const heat = 1800 - 300 * (Math.abs(dx) + Math.abs(dy) + Math.abs(dz));
+      if (this.temp[j] < heat) this.temp[j] = heat;
+      this.heatAct[this.chunkOf[j]] = 1;
+      this.awakeNext[this.chunkOf[j]] = 1;
+      if (type[j] === SAND && Math.random() < 0.6) this.morph(j, GLASS); // fulgurite
+    }
+    this.discover(DISC.LIGHTNING);
+    return [x, hitY, z];
   }
 
   growPlant(i, x, y, z) {

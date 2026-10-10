@@ -664,6 +664,46 @@ function resize() {
 }
 new ResizeObserver(resize).observe(stage);
 
+// ----- weather -----
+// Rain and snow fall over the whole world (with a little extra on the slice
+// the side view shows, so you can see it there). Storms add lightning.
+const WEATHERS = ['clear', 'rain', 'storm', 'snow'];
+const WEATHER_NAMES = { clear: 'Clear', rain: 'Rain', storm: 'Storm', snow: 'Snow' };
+state.weather = WEATHERS.includes(store.get('weather', 'clear')) ? store.get('weather', 'clear') : 'clear';
+let nextStrike = 0;
+function setWeather(w) {
+  state.weather = w;
+  store.set('weather', w);
+  $('#weather-label').textContent = WEATHER_NAMES[w];
+  $('#btn-weather').dataset.weather = w;
+  nextStrike = performance.now() + 3000;
+}
+$('#btn-weather').addEventListener('click', () => setWeather(WEATHERS[(WEATHERS.indexOf(state.weather) + 1) % WEATHERS.length]));
+
+function weatherStep() {
+  const w = state.weather;
+  if (w === 'clear') return;
+  const t = w === 'snow' ? El.SNOW : El.WATER;
+  const top = world.H - 1;
+  const drop = (x, z) => {
+    const i = world.index(x, top, z);
+    if (world.type[i] === El.EMPTY) world.set(i, t);
+  };
+  const n = w === 'snow' ? 3 : w === 'storm' ? 6 : 4;
+  for (let k = 0; k < n; k++) drop((Math.random() * world.W) | 0, (Math.random() * world.D) | 0);
+  if (state.mode === '2d' && Math.random() < 0.6) drop((Math.random() * world.W) | 0, r2d.z);
+}
+
+function weatherTick(now) {
+  if (state.weather !== 'storm' || state.paused || now < nextStrike) return;
+  nextStrike = now + 5000 + Math.random() * 9000;
+  const x = 4 + ((Math.random() * (world.W - 8)) | 0);
+  const z = state.mode === '2d' || !r3d ? r2d.z : 4 + ((Math.random() * (world.D - 8)) | 0);
+  world.strike(x, z);
+  const f = $('#flash');
+  f.classList.remove('on'); void f.offsetWidth; f.classList.add('on');
+}
+
 // ----- main loop -----
 // One clock drives the one world, whichever view is on screen.
 const RATE = 50; // simulation steps per second at 1× speed
@@ -680,12 +720,13 @@ function frame(now) {
     // out, so heavy moments slow the simulation slightly instead of the frame rate.
     const t0 = performance.now();
     let n = 0;
-    while (state.acc >= 1 && n < 3 && (n === 0 || performance.now() - t0 < 10)) { world.step(); state.acc -= 1; n++; }
+    while (state.acc >= 1 && n < 3 && (n === 0 || performance.now() - t0 < 10)) { weatherStep(); world.step(); state.acc -= 1; n++; }
     if (state.acc > 3) state.acc = 0;
   } else if (state.stepOnce) {
     world.step();
     state.stepOnce = false;
   }
+  weatherTick(now);
   if (is2d) r2d.render(now / 1000, state.thermal);
   else r3d.render(dt, !state.paused);
   while (world.events.length) addDiscovery(world.events.shift());
@@ -701,6 +742,7 @@ window.sandgrove = { world, r2d, get r3d() { return r3d; }, El };
 // ----- start -----
 select(state.selected);
 setSlice(r2d.z);
+setWeather(state.weather);
 setSpeed(state.speed);
 syncBrush();
 drawSwatches();

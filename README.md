@@ -26,8 +26,8 @@ Because the 2D view is a slice of a 3D world, things can move out of the slice.
 Water poured on flat ground spreads out in depth too, so it gets thinner in
 the side view, just as it really would.
 
-There are 26 reactions to discover, such as obsidian, boiling, glassmaking, brickmaking, charcoal and
-explosions. The **Discoveries** button in the top right keeps track of them.
+There are 33 reactions to discover, such as obsidian, boiling, glassmaking, brickmaking, charcoal,
+thermite, casting, rust, lightning and explosions. The **Discoveries** button in the top right keeps track of them.
 
 ---
 
@@ -115,6 +115,7 @@ GitHub Pages is free for public projects. For a private project it needs a paid 
 | Zoom | Scroll wheel or pinch (zooms toward the mouse), `+` and `−` keys | Scroll wheel or pinch, `+` and `−` keys |
 | Move around | Middle-drag, or drag with two fingers | Middle-drag |
 | Brush size | Shift + scroll, or the `[` and `]` keys | `[` and `]` keys |
+| Touch | Drag a finger to paint | One finger paints, two fingers turn and zoom |
 
 **Fly mode (3D, like creative mode in block games).** Press **Tab** (or the
 **Fly** button) to switch between the orbit view and a free camera:
@@ -129,7 +130,6 @@ GitHub Pages is free for public projects. For a private project it needs a paid 
 - **Tab** goes back to the orbit view, looking at where you were.
 
 If the page is not allowed to capture the mouse (some embedded pages), drag with the left mouse button to look around instead, and click without dragging to place.
-| Touch | Drag a finger to paint | One finger paints, two fingers turn and zoom |
 
 Everywhere:
 - `1` to `0` pick elements. `E` is the eraser, `H` heat, `J` cool.
@@ -156,7 +156,31 @@ to give up a lot of heat before it sets, and it only sets where it rests on
 something solid, so a pool hardens layer by layer from the bottom up and
 stays molten on top for minutes.
 
-**New materials:** Salt, Mud, Salt water, Brick and Coal.
+**Materials added later:**
+- **Salt, Mud, Salt water, Brick and Coal.**
+- **Thermite** carries its own oxygen, so once it is lit (around 600 °C) it burns
+  even underwater. It burns at about 2500 °C and leaves **Molten metal** behind.
+- **Molten metal** cools and sets into **Metal** (casting). Metal heated past
+  1500 °C melts back into it.
+- **Rust:** metal touching water slowly rusts, and much faster in salt water.
+- **Mercury** is the densest liquid (13,534 kg/m³). Sand, stone and even molten
+  iron float on it. It boils away at 357 °C.
+- **Honey** is a very thick, slow liquid.
+- **Fuse** burns slowly along its length, so you can light one end and stand back.
+
+**Machines** (in their own group in the palette):
+- **Cloner:** touch it with any element and it starts making copies of that element.
+- **Drain:** deletes whatever touches it, like a plughole.
+
+**Weather:** the **Weather** button at the bottom switches between Clear, Rain,
+Storm and Snow. In a storm, lightning strikes every few seconds. It sets trees
+on fire and fuses sand into glass where it hits.
+
+More things to try:
+- Put thermite on a metal plate and heat it.
+- Drop sand onto a pool of mercury and watch it float.
+- Lay a fuse from a fire to a pile of gunpowder.
+- Put water on a cloner and make a fountain. Put a drain below it.
 - Turn on the thermal camera to watch hot air rise.
 
 ---

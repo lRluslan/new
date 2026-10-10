@@ -8,7 +8,7 @@ import { rng } from './scenes.js';
 
 const {
   EMPTY, STONE, DIRT, SAND, SNOW, WATER, OIL, ACID, LAVA, SMOKE, FIRE, WOOD, PLANT,
-  ICE, GLASS, SEED, SALT, BRINE, MUD, BRICK, COAL, STATE, GAS, GLOWS,
+  ICE, GLASS, SEED, SALT, BRINE, MUD, BRICK, COAL, MOLTEN, MERCURY, HONEY, FUSE, CLONER, DRAIN, STATE, GAS, GLOWS,
 } = El;
 
 const pack = (r, g, b) => ((255 << 24) | (b << 16) | (g << 8) | r) >>> 0;
@@ -36,6 +36,9 @@ const SAND_TOP = packHex('#fcf0c8'), STONE_TOP = packHex('#b9b399'), SNOW_TOP = 
 const OIL_TOP = packHex('#7a5a35'), WOOD_TOP = packHex('#a8743f'), ICE_TOP = packHex('#f2fdfd');
 const BRINE_TINT = packHex('#9fb3a8'), MUD_TOP = packHex('#7a5c40'), SALT_TOP = packHex('#ffffff');
 const MORTAR = packHex('#c9b79c'), COAL_GLINT = packHex('#7a7680');
+const MOLTEN_P = ['#fff6d6', '#ffe9a8', '#ffd27a', '#ffb84a', '#f39a35'].map(packHex);
+const MERCURY_HI = packHex('#f4f8fa'), HONEY_D = ['#f6c45a', '#e8a93a', '#d9952a', '#c7821f', '#b06f18'].map(packHex);
+const CLONER_FRAME = packHex('#5b6270'), DRAIN_CORE = packHex('#05040a'), DRAIN_RIM = packHex('#4a3a78');
 const LEAF_COLORS = ['#e08a2c', '#d9a531', '#c4562a', '#f0c24a', '#b5462a'].map(packHex);
 
 // Thermal camera colours from -50 °C to 2500 °C.
@@ -379,6 +382,29 @@ export class Renderer2D {
             break;
           }
           case COAL: if ((sh & 31) === 0) c = COAL_GLINT; break;
+          case MOLTEN: c = MOLTEN_P[((sh >> 4) + tick + (x >> 1)) % 5]; break;
+          case MERCURY: {
+            // Liquid metal: bright rim on top, a slow moving sheen inside.
+            const glint = ((x + y * 2 + tick) % 23) === 0;
+            c = run === 0 ? MERCURY_HI : glint ? MERCURY_HI : PAL[MERCURY][(run + (x >> 2)) & 3];
+            break;
+          }
+          case HONEY: c = HONEY_D[Math.min(4, run >> 1)]; if (run === 0) c = scale(c, 1.12); break;
+          case FUSE: c = PAL[FUSE][(x + y) & 1 ? 3 : (sh & 1)]; break;
+          case CLONER: {
+            // Frame, filled with the colour of whatever it copies.
+            const kept = life[i];
+            const edge = !(y > 0 && type[i - W] === CLONER) || !(y < H - 1 && type[i + W] === CLONER) ||
+              !(x > 0 && type[i - 1] === CLONER) || !(x < W - 1 && type[i + 1] === CLONER);
+            c = edge ? CLONER_FRAME : kept && PAL[kept] ? blend(PAL[kept][sh & 3], CLONER_FRAME, 0.35) : PAL[CLONER][sh & 3];
+            break;
+          }
+          case DRAIN: {
+            const edge = !(y > 0 && type[i - W] === DRAIN) || !(y < H - 1 && type[i + W] === DRAIN) ||
+              !(x > 0 && type[i - 1] === DRAIN) || !(x < W - 1 && type[i + 1] === DRAIN);
+            c = edge ? DRAIN_RIM : ((x * 3 + y * 5 + tick) % 11 === 0 ? PAL[DRAIN][3] : DRAIN_CORE);
+            break;
+          }
           case MUD: if (exposed && run === 0) c = MUD_TOP; break;
           case SALT: if (exposed && run === 0) c = SALT_TOP; break;
         }

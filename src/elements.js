@@ -5,7 +5,8 @@
 export const EMPTY = 0, STONE = 1, DIRT = 2, SAND = 3, SNOW = 4, ASH = 5,
   GUNPOWDER = 6, SEED = 7, WATER = 8, OIL = 9, ACID = 10, LAVA = 11,
   SMOKE = 12, FIRE = 13, WOOD = 14, PLANT = 15, ICE = 16,
-  GLASS = 17, OBSIDIAN = 18, METAL = 19, SALT = 20, BRINE = 21, MUD = 22, BRICK = 23, COAL = 24;
+  GLASS = 17, OBSIDIAN = 18, METAL = 19, SALT = 20, BRINE = 21, MUD = 22, BRICK = 23, COAL = 24,
+  THERMITE = 25, MOLTEN = 26, RUST = 27, MERCURY = 28, HONEY = 29, FUSE = 30, CLONER = 31, DRAIN = 32;
 
 export const SOLID = 1, POWDER = 2, LIQUID = 3, GAS = 4;
 
@@ -18,6 +19,7 @@ export const DISC = {
   GLASS: 7, BURN_WOOD: 8, OIL_FIRE: 9, WILDFIRE: 10, GROW: 11, SPROUT: 12,
   ACID: 13, EXPLODE: 14, THAW: 15, EXTINGUISH: 16, FLOAT: 17, SINK: 18, GLOW: 19,
   DISSOLVE: 20, DEICE: 21, SALT_CRYSTALS: 22, MUD: 23, BRICK: 24, CHARCOAL: 25, BRINE_SINKS: 26,
+  THERMITE: 27, MELT_METAL: 28, CASTING: 29, RUST: 30, MERCURY_FLOAT: 31, FUSE: 32, LIGHTNING: 33,
 };
 
 export const DISCOVERIES = [
@@ -73,6 +75,20 @@ export const DISCOVERIES = [
     text: 'Wood heated without air cannot burn, so it chars into coal instead. Coal burns long and hot.' },
   { id: DISC.BRINE_SINKS, title: 'Salt layer', recipe: 'Salt water + water', hint: 'Pour salt water into fresh water.',
     text: 'Salt water (1030 kg/m³) is denser than fresh water, so it sinks and forms a layer at the bottom.' },
+  { id: DISC.THERMITE, title: 'Thermite', recipe: 'Thermite + 600 °C', hint: 'Light the grey powder with something very hot.',
+    text: 'Aluminium burns with rust at about 2500 °C. It carries its own oxygen, so it burns underwater, and leaves molten iron behind.' },
+  { id: DISC.MELT_METAL, title: 'Molten metal', recipe: 'Metal + 1500 °C', hint: 'Metal melts too, if you get it hot enough.',
+    text: 'Iron melts at about 1500 °C into a glowing liquid that flows like water but is eight times heavier.' },
+  { id: DISC.CASTING, title: 'Casting', recipe: 'Molten metal cools', hint: 'Let molten metal cool in a mould.',
+    text: 'Liquid metal sets back into solid metal below 1450 °C, taking the shape of whatever holds it.' },
+  { id: DISC.RUST, title: 'Rusting', recipe: 'Metal + water', hint: 'Leave metal in water for a while. Salt water is faster.',
+    text: 'Iron slowly reacts with water and oxygen to make crumbly rust. Salt speeds it up, which is why the sea is hard on ships.' },
+  { id: DISC.MERCURY_FLOAT, title: 'Heavy liquid', recipe: 'Something on mercury', hint: 'Drop sand or iron into mercury.',
+    text: 'Mercury weighs 13,500 kg/m³, so sand, gravel and even molten iron float on top of it.' },
+  { id: DISC.FUSE, title: 'Fuse', recipe: 'Fuse + fire', hint: 'Light one end of a fuse.',
+    text: 'A fuse burns quickly along its length, carrying the flame to whatever is at the other end.' },
+  { id: DISC.LIGHTNING, title: 'Lightning', recipe: 'Storm weather', hint: 'Change the weather to a storm.',
+    text: 'A lightning bolt heats the air to about 30,000 °C. It sets trees on fire and fuses sand into glass.' },
 ];
 
 // Look up a discovery by its id (ids stay stable even if one is retired).
@@ -178,7 +194,8 @@ def(OBSIDIAN, { name: 'Obsidian', cat: 'powder', state: POWDER, density: 2400, k
   c2: ['#2a2238', '#352b45', '#1f1a2b', '#43375a'], c3: ['#241d33', '#2e2540', '#1a1526', '#3a2f51'] });
 
 def(METAL, { name: 'Metal', cat: 'solid', state: SOLID, density: 7800, k: 0.3, c: 0.5, hard: 0.08,
-  desc: 'Conducts heat far better than anything else.',
+  hot: [1500, MOLTEN, DISC.MELT_METAL], latent: [150, 0],
+  desc: 'Iron. Conducts heat far better than anything else. Rusts in water and melts at 1500 °C.',
   c2: ['#9aa4ab', '#aeb7bd', '#858f97', '#c4ccd1'], c3: ['#8fa3a8', '#a2b5b9', '#7a8e93', '#b7c8cb'] });
 
 def(SALT, { name: 'Salt', cat: 'powder', state: POWDER, density: 2160, k: 0.08, c: 0.7, slide: 0.75, hard: 0.9,
@@ -204,6 +221,41 @@ def(COAL, { name: 'Coal', cat: 'solid', state: SOLID, density: 1350, k: 0.05, c:
   desc: 'Charcoal. Hard to light, but burns for a long time at about 1100 °C.',
   c2: ['#2b2a2c', '#353336', '#232224', '#413e42'], c3: ['#262628', '#303032', '#1e1e20', '#3b3a3d'] });
 
+def(THERMITE, { name: 'Thermite', cat: 'powder', state: POWDER, density: 2700, k: 0.1, c: 0.8, slide: 0.8, hard: 0.8,
+  ignite: 600, burn: [55, 2500, 0], burnsInto: MOLTEN, ownOxygen: true,
+  desc: 'Aluminium and rust powder. Hard to light, then burns at 2500 °C, even underwater, leaving molten iron.',
+  c2: ['#8a8174', '#7a7266', '#9b9283', '#6b645a'], c3: ['#7d7a75', '#6e6b66', '#8d8a84', '#5f5c58'] });
+
+def(MOLTEN, { name: 'Molten metal', cat: 'liquid', state: LIQUID, density: 7000, k: 0.25, c: 0.5, flow: 3, visc: 0.5, temp: 1600,
+  cold: [1450, METAL, DISC.CASTING], latent: [0, 150], hard: 0, glow: true,
+  desc: 'Liquid iron at 1600 °C. Sets into metal below 1450 °C.',
+  c2: ['#ffe9a8', '#ffd27a', '#fff4d0', '#ffb84a'], c3: ['#ffe9a8', '#ffd27a', '#fff4d0', '#ffb84a'], group3: 2 });
+
+def(RUST, { name: 'Rust', cat: 'powder', state: POWDER, density: 5200, k: 0.08, c: 0.65, slide: 0.35, hard: 1,
+  desc: 'Iron oxide. Flaky orange powder left when metal rusts.',
+  c2: ['#9c4f24', '#87421d', '#b0602e', '#73391a'], c3: ['#8f4a26', '#7c3f20', '#a1582f', '#6a351b'] });
+
+def(MERCURY, { name: 'Mercury', cat: 'liquid', state: LIQUID, density: 13534, k: 0.2, c: 0.3, flow: 4, visc: 1, hard: 0.5,
+  hot: [357, EMPTY, DISC.BOIL], latent: [100, 0],
+  desc: 'A liquid metal so heavy (13,500 kg/m³) that sand, stone chips and even iron float on it.',
+  c2: ['#c9d1d6', '#b3bcc2', '#dde3e6', '#9aa4ab'], c3: ['#c2ccd1', '#aab4ba', '#d8dfe2', '#939ea5'] });
+
+def(HONEY, { name: 'Honey', cat: 'liquid', state: LIQUID, density: 1420, k: 0.05, c: 1.2, flow: 1, visc: 0.12, hard: 0.3,
+  desc: 'Thick and sticky. Flows very slowly and sinks under water.',
+  c2: ['#e3a12b', '#d18f1f', '#f0b545', '#bf7d17'], c3: ['#d99a2e', '#c68825', '#e8ae45', '#b3781c'], group3: 1, a3: 0.88 });
+
+def(FUSE, { name: 'Fuse', cat: 'solid', state: SOLID, density: 600, k: 0.3, c: 0.4, ignite: 150, burn: [5, 900, 0], hard: 0.6,
+  desc: 'Burns fast along its length. Use it to light gunpowder from far away.',
+  c2: ['#6b5a3a', '#7d6a45', '#5a4b30', '#c9a24a'], c3: ['#6b5a3a', '#7d6a45', '#5a4b30', '#c9a24a'] });
+
+def(CLONER, { name: 'Cloner', cat: 'machine', state: SOLID, density: 99999, k: 0.0, c: 9, acidProof: true,
+  desc: 'Copies the first thing that touches it, then keeps making more of it. Try water, sand or lava.',
+  c2: ['#3a3f4a', '#454b57', '#31353e', '#6fd6c0'], c3: ['#3a3f4a', '#454b57', '#31353e', '#6fd6c0'] });
+
+def(DRAIN, { name: 'Drain', cat: 'machine', state: SOLID, density: 99999, k: 0.0, c: 9, acidProof: true,
+  desc: 'Swallows anything that touches it.',
+  c2: ['#120f1a', '#1b1626', '#0b0910', '#3b2f5c'], c3: ['#120f1a', '#1b1626', '#0b0910', '#3b2f5c'] });
+
 export const COUNT = DEFS.length;
 export const ELEMENTS = DEFS;
 
@@ -222,6 +274,8 @@ export const COLD_DISC = new Int8Array(COUNT).fill(-1);
 export const LATENT_HOT = new Float32Array(COUNT);
 export const LATENT_COLD = new Float32Array(COUNT);
 export const IGNITE = new Float32Array(COUNT);
+export const BURN_TO = new Uint8Array(COUNT);    // what a fuel leaves behind (0 = ash or a last flame)
+export const OWN_OXYGEN = new Uint8Array(COUNT); // burns without air (gunpowder, thermite)
 export const BURN_TIME = new Float32Array(COUNT);
 export const BURN_HEAT = new Float32Array(COUNT);
 export const ASH_CHANCE = new Float32Array(COUNT);
@@ -249,6 +303,8 @@ for (let t = 0; t < COUNT; t++) {
   if (d.latent) { LATENT_HOT[t] = d.latent[0]; LATENT_COLD[t] = d.latent[1]; }
   IGNITE[t] = d.ignite ?? 0;
   if (d.burn) { BURN_TIME[t] = d.burn[0]; BURN_HEAT[t] = d.burn[1]; ASH_CHANCE[t] = d.burn[2]; }
+  BURN_TO[t] = d.burnsInto ?? 0;
+  OWN_OXYGEN[t] = d.ownOxygen ? 1 : 0;
   SLIDE[t] = d.slide ?? 0;
   FLOW[t] = d.flow ?? 0;
   VISC[t] = d.visc ?? 1;
@@ -263,11 +319,12 @@ for (let t = 0; t < COUNT; t++) {
 
 // Order of the buttons in the element palette.
 export const PALETTE = [
-  { cat: 'Powders', items: [SAND, DIRT, SNOW, GUNPOWDER, ASH, OBSIDIAN, SALT, MUD] },
-  { cat: 'Liquids', items: [WATER, OIL, LAVA, ACID, BRINE] },
+  { cat: 'Powders', items: [SAND, DIRT, SNOW, GUNPOWDER, ASH, OBSIDIAN, SALT, MUD, THERMITE, RUST] },
+  { cat: 'Liquids', items: [WATER, OIL, LAVA, ACID, BRINE, MERCURY, HONEY, MOLTEN] },
   { cat: 'Gases', items: [FIRE, SMOKE] },
-  { cat: 'Solids', items: [STONE, WOOD, ICE, METAL, GLASS, BRICK, COAL] },
+  { cat: 'Solids', items: [STONE, WOOD, ICE, METAL, GLASS, BRICK, COAL, FUSE] },
   { cat: 'Life', items: [PLANT, SEED] },
+  { cat: 'Machines', items: [CLONER, DRAIN] },
 ];
 
 export function hexToRgb(hex) {

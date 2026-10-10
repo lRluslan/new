@@ -632,6 +632,15 @@ kbd {
   .panel { padding: 22px 18px 20px; }
 }
 
+/* Lightning flash */
+.flash { position: absolute; inset: 0; z-index: 3; pointer-events: none; background: #eefcff; opacity: 0; }
+.flash.on { animation: flash .45s ease-out; }
+@keyframes flash { 0% { opacity: .55; } 15% { opacity: .15; } 25% { opacity: .4; } 100% { opacity: 0; } }
+#btn-weather[data-weather="rain"], #btn-weather[data-weather="storm"], #btn-weather[data-weather="snow"] {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
 /* ---------- fly mode ---------- */
 .app[data-input="touch"] .mouse-only { display: none; }
 .crosshair {

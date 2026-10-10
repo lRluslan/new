@@ -7,13 +7,14 @@ import { rng } from './scenes.js';
 
 // Each 16×16 tile sits in a 32×32 cell, surrounded by repeats of itself, so
 // the smaller mipmap levels never blend in a neighbouring tile.
-export const TILE = 16, PAD = 8, CELL = TILE + 2 * PAD, COLS = 8, ROWS = 4;
+export const TILE = 16, PAD = 8, CELL = TILE + 2 * PAD, COLS = 16, ROWS = 4;
 
 const T = {
   stone: 0, dirt: 1, grassTop: 2, grassSide: 3, sand: 4, snow: 5, ash: 6, gunpowder: 7,
   seed: 8, water: 9, oil: 10, acid: 11, lava: 12, smoke: 14, fire: 15,
   woodSide: 16, woodTop: 17, leaves: 18, ice: 19, glass: 20, obsidian: 21, metal: 22,
   salt: 13, brine: 23, mud: 24, brick: 25, coal: 26,
+  thermite: 27, molten: 28, rust: 29, mercury: 30, honey: 31, fuse: 32, cloner: 33, drain: 34,
 };
 
 const BY_ELEMENT = {
@@ -23,6 +24,8 @@ const BY_ELEMENT = {
   [El.WOOD]: T.woodSide, [El.PLANT]: T.leaves, [El.ICE]: T.ice, [El.GLASS]: T.glass,
   [El.OBSIDIAN]: T.obsidian, [El.METAL]: T.metal, [El.SALT]: T.salt, [El.BRINE]: T.brine,
   [El.MUD]: T.mud, [El.BRICK]: T.brick, [El.COAL]: T.coal,
+  [El.THERMITE]: T.thermite, [El.MOLTEN]: T.molten, [El.RUST]: T.rust, [El.MERCURY]: T.mercury,
+  [El.HONEY]: T.honey, [El.FUSE]: T.fuse, [El.CLONER]: T.cloner, [El.DRAIN]: T.drain,
 };
 
 // face: 0 left, 1 right, 2 bottom, 3 top, 4 back, 5 front.
@@ -146,6 +149,22 @@ function painter(rand) {
         return shadeC(tone[(row * 2 + (((x + off) / 8) | 0)) & 7], 0.92 + rand() * 0.14);
       };
     },
+    // Braided cord with a pale twist.
+    fuse(pal) {
+      const p = pal.map(rgb);
+      return (x, y) => ((x + y) % 4 === 0 ? p[3] : (x - y + 16) % 4 === 0 ? shadeC(p[2], 0.8) : pick(p.slice(0, 3)));
+    },
+    // A framed panel with a glowing core (cloner) or a dark hole (drain).
+    machine(pal) {
+      const p = pal.map(rgb);
+      return (x, y) => {
+        if (x === 0 || y === 0 || x === 15 || y === 15) return shadeC(p[1], 1.25);
+        if (x === 1 || y === 1 || x === 14 || y === 14) return shadeC(p[2], 0.8);
+        const d = Math.hypot(x - 7.5, y - 7.5);
+        if (d < 4.5) return mix(p[3], [255, 255, 255], Math.max(0, 0.5 - d / 9));
+        return (x + y) % 3 === 0 ? p[1] : p[0];
+      };
+    },
     sparkle(pal, accent, chance) {
       const p = pal.map(rgb), a = rgb(accent);
       return () => (rand() < chance ? a : pick(p));
@@ -194,6 +213,14 @@ export function buildAtlas() {
     [T.mud]: P.sparkle(c3(El.MUD), '#6b5642', 0.08),
     [T.brick]: P.brick(c3(El.BRICK)),
     [T.coal]: P.sparkle(c3(El.COAL), '#6d6a72', 0.07),
+    [T.thermite]: P.sparkle(c3(El.THERMITE), '#b8562e', 0.12),
+    [T.molten]: P.lava(c3(El.MOLTEN)),
+    [T.rust]: P.sparkle(c3(El.RUST), '#c47a3a', 0.1),
+    [T.mercury]: P.water(c3(El.MERCURY)),
+    [T.honey]: P.water(c3(El.HONEY)),
+    [T.fuse]: P.fuse(c3(El.FUSE)),
+    [T.cloner]: P.machine(c3(El.CLONER)),
+    [T.drain]: P.machine(c3(El.DRAIN)),
   };
   for (const [tileStr, fn] of Object.entries(fns)) {
     const tile = +tileStr;
