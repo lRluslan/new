@@ -690,3 +690,12 @@ kbd {
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+.mob2d {
+  position: absolute;
+  image-rendering: pixelated;
+  pointer-events: none;
+}
+.ghost.small { margin-top: 10px; height: 30px; padding: 0 12px; font-size: 12px; width: 100%; }
+.el canvas.mob-icon { background: #1b2324; }
+.info-icon.tool-grab { color: var(--accent); }
+#btn-gore[aria-pressed="true"] { color: #e8604a; }

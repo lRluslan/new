@@ -6,7 +6,8 @@ export const EMPTY = 0, STONE = 1, DIRT = 2, SAND = 3, SNOW = 4, ASH = 5,
   GUNPOWDER = 6, SEED = 7, WATER = 8, OIL = 9, ACID = 10, LAVA = 11,
   SMOKE = 12, FIRE = 13, WOOD = 14, PLANT = 15, ICE = 16,
   GLASS = 17, OBSIDIAN = 18, METAL = 19, SALT = 20, BRINE = 21, MUD = 22, BRICK = 23, COAL = 24,
-  THERMITE = 25, MOLTEN = 26, RUST = 27, MERCURY = 28, HONEY = 29, FUSE = 30, CLONER = 31, DRAIN = 32;
+  THERMITE = 25, MOLTEN = 26, RUST = 27, MERCURY = 28, HONEY = 29, FUSE = 30, CLONER = 31, DRAIN = 32,
+  BLOOD = 33, BODY = 34;
 
 export const SOLID = 1, POWDER = 2, LIQUID = 3, GAS = 4;
 
@@ -20,6 +21,7 @@ export const DISC = {
   ACID: 13, EXPLODE: 14, THAW: 15, EXTINGUISH: 16, FLOAT: 17, SINK: 18, GLOW: 19,
   DISSOLVE: 20, DEICE: 21, SALT_CRYSTALS: 22, MUD: 23, BRICK: 24, CHARCOAL: 25, BRINE_SINKS: 26,
   THERMITE: 27, MELT_METAL: 28, CASTING: 29, RUST: 30, MERCURY_FLOAT: 31, FUSE: 32, LIGHTNING: 33,
+  DROWN: 34, ON_FIRE: 35, CRUSH: 36, INFECTION: 37, GASP: 38, SALT_FLOAT: 39,
 };
 
 export const DISCOVERIES = [
@@ -89,6 +91,18 @@ export const DISCOVERIES = [
     text: 'A fuse burns quickly along its length, carrying the flame to whatever is at the other end.' },
   { id: DISC.LIGHTNING, title: 'Lightning', recipe: 'Storm weather', hint: 'Change the weather to a storm.',
     text: 'A lightning bolt heats the air to about 30,000 °C. It sets trees on fire and fuses sand into glass.' },
+  { id: DISC.DROWN, title: 'Drowning', recipe: 'Creature + deep water', hint: 'People need air. What if they cannot reach it?',
+    text: 'A person is only a little denser than water. Swimming keeps the head up until they tire, then they sink.' },
+  { id: DISC.ON_FIRE, title: 'On fire', recipe: 'Creature + fire', hint: 'Fire and living things do not mix.',
+    text: 'Clothes and fur catch fire, and a burning creature runs and spreads the flames. Water puts it out.' },
+  { id: DISC.CRUSH, title: 'Crushed', recipe: 'Creature + heavy load', hint: 'Bury someone, or drop something heavy on them.',
+    text: 'A pile of sand or stone weighs a lot. Too much on top of a body crushes it.' },
+  { id: DISC.INFECTION, title: 'Infection', recipe: 'Zombie + human', hint: 'Let a zombie catch a person.',
+    text: 'A zombie bite spreads. A few seconds later the bitten person turns into a zombie too.' },
+  { id: DISC.GASP, title: 'Fish out of water', recipe: 'Fish + air', hint: 'Fish breathe water. Take one out.',
+    text: 'Gills only work in water. A fish on land flops about and soon suffocates.' },
+  { id: DISC.SALT_FLOAT, title: 'Salt water floats you', recipe: 'Person + salt water', hint: 'Throw someone into salt water.',
+    text: 'Salt water is denser than a person, so you float without swimming, like in the Dead Sea.' },
 ];
 
 // Look up a discovery by its id (ids stay stable even if one is retired).
@@ -255,6 +269,18 @@ def(CLONER, { name: 'Cloner', cat: 'machine', state: SOLID, density: 99999, k: 0
 def(DRAIN, { name: 'Drain', cat: 'machine', state: SOLID, density: 99999, k: 0.0, c: 9, acidProof: true,
   desc: 'Swallows anything that touches it.',
   c2: ['#120f1a', '#1b1626', '#0b0910', '#3b2f5c'], c3: ['#120f1a', '#1b1626', '#0b0910', '#3b2f5c'] });
+
+// Blood: thin salty water with cells in it. Boils away like water.
+def(BLOOD, { name: 'Blood', cat: 'liquid', state: LIQUID, density: 1060, k: 0.14, c: 1.5, flow: 4, visc: 0.7, hard: 0.2,
+  hot: [100, EMPTY, DISC.BOIL], latent: [200, 0],
+  desc: 'Comes out of hurt creatures. Flows like thin water.',
+  c2: ['#9e1f1a', '#8a1915', '#b22a20', '#741410'], c3: ['#9e1f1a', '#8a1915', '#b22a20', '#741410'], group3: 0 });
+
+// Not a real material: the space a creature's body fills, written into the
+// grid while the world moves so sand piles on bodies and water flows round
+// them, and removed again before anything is drawn.
+def(BODY, { name: 'Creature', state: SOLID, density: 99999, k: 0, c: 1, acidProof: true,
+  c2: ['#000000'], c3: ['#000000'] });
 
 export const COUNT = DEFS.length;
 export const ELEMENTS = DEFS;

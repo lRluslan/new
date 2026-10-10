@@ -11,7 +11,7 @@
 import {
   EMPTY, STONE, DIRT, SAND, GUNPOWDER, SEED, WATER, OIL, ACID, LAVA, SMOKE,
   FIRE, WOOD, PLANT, OBSIDIAN, ASH, ICE, SNOW, SALT, BRINE, MUD, COAL,
-  METAL, RUST, MERCURY, FUSE, THERMITE, CLONER, DRAIN, GLASS, COUNT, SOLID, POWDER, LIQUID, GAS, AMBIENT, FIRE_TEMP, DISC,
+  METAL, RUST, MERCURY, FUSE, THERMITE, CLONER, DRAIN, GLASS, BODY, COUNT, SOLID, POWDER, LIQUID, GAS, AMBIENT, FIRE_TEMP, DISC,
   STATE, DENS, K, CAP, TEMP0, HOT_AT, HOT_TO, HOT_DISC, COLD_AT, COLD_TO, COLD_DISC, LATENT_HOT, LATENT_COLD,
   IGNITE, BURN_TIME, BURN_HEAT, ASH_CHANCE, BURN_TO, OWN_OXYGEN, SLIDE, FLOW, VISC, RISE, LIFE_MIN, LIFE_SPAN,
   HARD, GLOWS,
@@ -49,7 +49,7 @@ for (let t = 1; t < COUNT; t++) {
   BLOCKS[t] = STATE[t] === SOLID || STATE[t] === POWDER ? 1 : 0;
   BLOCKS_OR_LIQUID[t] = BLOCKS[t] || STATE[t] === LIQUID ? 1 : 0;
   // Seeds, salt and the machines keep working, so they never sleep.
-  CAN_SLEEP[t] = BLOCKS[t] && t !== SEED && t !== SALT && t !== CLONER && t !== DRAIN ? 1 : 0;
+  CAN_SLEEP[t] = BLOCKS[t] && t !== SEED && t !== SALT && t !== CLONER && t !== DRAIN && t !== BODY ? 1 : 0;
   WAKE_T[t] = Math.min(IGNITE[t] || Infinity, GLOWS[t] ? Infinity : 525);
 }
 
@@ -73,6 +73,8 @@ export class World {
     this.clock = 0;
     this.found = new Uint8Array(64);
     this.events = [];
+    this.blasts = [];   // explosions this step, for the creatures to feel
+    this.hits = [];     // falling grains that landed on a creature: cell, speed × density
     this.steps = 0;
     this.quiet = 0;   // steps to ignore discoveries for, while a new scene settles
     this.setupChunks();
@@ -183,6 +185,7 @@ export class World {
     this.awake.fill(1);
     this.restChunk.fill(0);
     this.awakeNext.fill(1);
+    this.blasts.length = 0; this.hits.length = 0;
     this.quiet = 90;
   }
 
@@ -513,6 +516,7 @@ export class World {
     }
     const i = x + W * (z + D * y);
     this.set(i, FIRE, 1500);
+    this.blasts.push(x, y, z);
     this.discover(DISC.EXPLODE);
   }
 
@@ -566,6 +570,7 @@ export class World {
     if (y === 0) { this.vy[i] = 0; return -1; }
     const below = ty[i - L];
     if (!this.canEnter(t, below)) {
+      if (below === BODY && STATE[t] === POWDER && this.vy[i] < -2) this.hits.push(i - L, -this.vy[i] * DENS[t]);
       if (below === MERCURY && t !== MERCURY && this.vy[i] < -0.5) this.discover(DISC.MERCURY_FLOAT);
       this.vy[i] = 0;
       return -1;
@@ -587,6 +592,8 @@ export class World {
       this.swap(cur, cur - L);
       cur -= L; cy--; n--;
     }
+    // A falling grain that lands on a creature hits it.
+    if (n > 0 && cy > 0 && ty[cur - L] === BODY && STATE[t] === POWDER && v < -2) this.hits.push(cur - L, -v * DENS[t]);
     // Water landing on bare soil soaks in and turns it to mud.
     if (n > 0 && cy > 0 && t === WATER && ty[cur - L] === DIRT && Math.random() < 0.6) {
       this.morph(cur - L, MUD);
@@ -813,7 +820,7 @@ export class World {
         z > 0 ? i - W : -1, z < D - 1 ? i + W : -1];
       for (const n of near) {
         const o = n >= 0 ? type[n] : EMPTY;
-        if (o !== EMPTY && o !== CLONER && o !== DRAIN) { this.life[i] = o; return; }
+        if (o !== EMPTY && o !== CLONER && o !== DRAIN && o !== BODY) { this.life[i] = o; return; }
       }
       return;
     }
@@ -826,7 +833,7 @@ export class World {
     const n = this.randomNeighbor(i, x, y, z);
     if (n < 0) return;
     const o = this.type[n];
-    if (o !== EMPTY && o !== CLONER && o !== DRAIN) this.set(n, EMPTY, AMBIENT);
+    if (o !== EMPTY && o !== CLONER && o !== DRAIN && o !== BODY) this.set(n, EMPTY, AMBIENT);
   }
 
   // A lightning bolt from the sky down to the first thing it meets at (x, z).

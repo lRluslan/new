@@ -10,6 +10,8 @@ import { World } from './world.js';
 import { autumnGlade, emptyWorld, WORLD_SIZE } from './scenes.js';
 import { Renderer2D } from './render2d.js';
 import { drawSwatch } from './textures.js';
+import { Creatures, SPECIES, SPECIES_ORDER, iconCreature } from './creatures.js';
+import { drawCreature } from './creatureArt.js';
 
 const $ = sel => document.querySelector(sel);
 const app = $('#app');
@@ -25,17 +27,22 @@ const TOOLS = [
   { id: 'erase', name: 'Eraser', key: 'E', desc: 'Removes anything it touches.' },
   { id: 'heat', name: 'Heat', key: 'H', desc: 'Raises the temperature. Melts, boils and ignites things.' },
   { id: 'cool', name: 'Cool', key: 'J', desc: 'Lowers the temperature, down to -200 °C. Freezes water.' },
+  { id: 'grab', name: 'Grab', key: 'G', desc: 'Click and drag a creature to pick it up. Let go to drop it, or flick the mouse to throw it.' },
 ];
 const TOOL_ICONS = {
   erase: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 10 9 4l4 4-6 6H4l-1-1z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M6 7l4 4" stroke="currentColor" stroke-width="1.5"/><path d="M8 14h6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>',
   heat: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5c.5 2.4 3.5 3.8 3.5 7.2A3.5 3.5 0 0 1 4.5 8.7c0-1.6.8-2.6 1.6-3.4.1 1.3.7 2 1.4 2.3C7.3 5.3 7.4 3.4 8 1.5z" fill="currentColor"/></svg>',
+  grab: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5.2 8.2V3.6a1 1 0 0 1 2 0V7.5m0-.4V2.8a1 1 0 0 1 2 0v4.6m0-.3V3.8a1 1 0 0 1 2 0v5.4c0 2.8-1.6 4.8-4.2 4.8-1.6 0-2.5-.7-3.4-2L2.4 9.2a1 1 0 0 1 1.5-1.3l1.3 1.3" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   cool: '<svg viewBox="0 0 16 16" aria-hidden="true"><g stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M8 1.5v13M2.4 4.75l11.2 6.5M2.4 11.25l11.2-6.5"/><path d="M6.3 2.8 8 4.3l1.7-1.5M6.3 13.2 8 11.7l1.7 1.5"/></g></svg>',
 };
 
 // ----- the world -----
 const world = new World(WORLD_SIZE.W, WORLD_SIZE.H, WORLD_SIZE.D);
 autumnGlade(world);
+const creatures = new Creatures(world);
+creatures.gore = store.get('gore', true);
 const r2d = new Renderer2D(stage, world);
+r2d.creatures = creatures;
 let r3d = null, loading3d = null;   // the 3D view loads the first time it is opened
 
 const state = {
@@ -53,6 +60,8 @@ const state = {
   fly: false,         // 3D free camera
   locked: false,      // mouse captured for looking around
   noLock: false,      // this page cannot capture the mouse: drag to look instead
+  held: null,         // the creature being carried by the mouse
+  holdDist: 0,        // 3D: how far along the mouse ray it is held
 };
 const keysDown = new Set();
 
@@ -100,6 +109,25 @@ for (const group of El.PALETTE) {
 {
   const sec = document.createElement('section');
   sec.className = 'group';
+  sec.innerHTML = '<h2>Creatures</h2><div class="grid"></div>';
+  const grid = sec.querySelector('.grid');
+  for (const kind of SPECIES_ORDER) {
+    const sp = SPECIES[kind];
+    const b = document.createElement('button');
+    b.className = 'el mob';
+    b.type = 'button';
+    b.title = `${sp.name}: click to drop one in`;
+    b.innerHTML = `<canvas class="mob-icon" width="24" height="24"></canvas><span>${sp.name}</span>`;
+    drawMobIcon(b.querySelector('canvas'), kind);
+    b.addEventListener('click', () => select({ kind: 'mob', id: kind }));
+    grid.append(b);
+    elButtons.set('mob:' + kind, b);
+  }
+  palette.append(sec);
+}
+{
+  const sec = document.createElement('section');
+  sec.className = 'group';
   sec.innerHTML = '<h2>Tools</h2><div class="grid"></div>';
   const grid = sec.querySelector('.grid');
   for (const t of TOOLS) {
@@ -113,6 +141,22 @@ for (const group of El.PALETTE) {
     elButtons.set('tool:' + t.id, b);
   }
   palette.append(sec);
+}
+
+// A creature's portrait: the real sprite, standing, scaled to fit.
+function drawMobIcon(canvas, kind) {
+  const c = iconCreature(kind);
+  const sp = SPECIES[kind];
+  const ctx = canvas.getContext('2d');
+  const BW = canvas.width, BH = canvas.height;
+  const img = ctx.createImageData(BW, BH);
+  const buf = new Uint32Array(img.data.buffer);
+  const S = Math.max(1.6, Math.min(4, 19 / Math.max(sp.height + (sp.walker ? 0 : 1.5), sp.length + 1.5)));
+  const minY = Math.min(...c.py) - (sp.walker ? 0.6 : 0.8), maxY = Math.max(...c.py) + sp.headR;
+  const minX = Math.min(...c.px), maxX = Math.max(...c.px);
+  const x0 = (minX + maxX) / 2 - BW / 2 / S, y0 = (minY + maxY) / 2 + BH / 2 / S;
+  drawCreature(c, { buf, BW, BH, S, x0, y0, gore: false, tick: 0 });
+  ctx.putImageData(img, 0, 0);
 }
 
 function drawSwatches() {
@@ -144,6 +188,23 @@ function select(sel) {
     $('#info-swatch').hidden = false;
     $('#info-icon').hidden = true;
     drawSwatch($('#info-swatch'), sel.id, state.mode);
+  } else if (sel.kind === 'mob') {
+    const sp = SPECIES[sel.id];
+    const facts = [
+      ['Health', `${sp.hp}`],
+      ['Density', `${sp.density.toLocaleString('en-US')} kg/m³`],
+      ['Breathes', sp.breathes === 'water' ? 'Water' : sp.breathes ? 'Air' : 'Nothing'],
+      ['Speed', sp.run >= 0.13 ? 'Fast' : sp.run >= 0.1 ? 'Medium' : 'Slow'],
+    ];
+    info.querySelector('h3').textContent = sp.name;
+    info.querySelector('p').textContent = sp.desc + ' Click to drop one in; click and drag one to throw it.';
+    info.querySelector('dl').innerHTML = facts.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('');
+    $('#info-swatch').hidden = true;
+    const icon = $('#info-icon');
+    icon.hidden = false;
+    icon.className = 'info-icon';
+    icon.innerHTML = '<canvas width="24" height="24" style="width:100%;height:100%;image-rendering:pixelated"></canvas>';
+    drawMobIcon(icon.querySelector('canvas'), sel.id);
   } else {
     const t = TOOLS.find(t => t.id === sel.id);
     info.querySelector('h3').textContent = t.name;
@@ -155,7 +216,9 @@ function select(sel) {
     icon.className = 'info-icon tool-' + t.id;
     icon.innerHTML = TOOL_ICONS[t.id];
   }
+  $('#btn-clear-mobs').hidden = !(sel.kind === 'mob' || (sel.kind === 'tool' && sel.id === 'grab'));
 }
+$('#btn-clear-mobs').addEventListener('click', () => { dropHeld(); creatures.clear(); });
 
 // ----- controls -----
 const brushInput = $('#brush'), brushOut = $('#brush-out');
@@ -194,8 +257,17 @@ $('#btn-reset').addEventListener('click', resetScene);
 $('#btn-clear').addEventListener('click', clearScene);
 
 // Reset and Clear act on the one shared world, whichever view is open.
-function resetScene() { autumnGlade(world); }
-function clearScene() { emptyWorld(world); }
+function resetScene() { dropHeld(); creatures.clear(); autumnGlade(world); }
+function clearScene() { dropHeld(); creatures.clear(); emptyWorld(world); }
+
+// ----- blood and damage effects -----
+function setGore(on) {
+  creatures.gore = on;
+  store.set('gore', on);
+  $('#btn-gore').setAttribute('aria-pressed', String(on));
+  $('#gore-label').textContent = on ? 'Blood' : 'No blood';
+}
+$('#btn-gore').addEventListener('click', () => setGore(!creatures.gore));
 
 // ----- slice -----
 const sliceInput = $('#slice'), sliceOut = $('#slice-out');
@@ -329,6 +401,7 @@ async function setMode(mode) {
 async function load3d() {
   const { Renderer3D } = await import('./render3d.js');
   r3d = new Renderer3D(stage, world);
+  r3d.creatures = creatures;
   r3d.setPixelScale(store.get('pixel', 2));
   for (const o of document.querySelectorAll('[data-pixel]')) o.setAttribute('aria-pressed', String(+o.dataset.pixel === r3d.pixelScale));
   r3d.setVisible(false);
@@ -341,7 +414,45 @@ for (const b of document.querySelectorAll('[data-mode-btn]')) b.addEventListener
 // ----- input -----
 function modeForButton(button) {
   if (button === 2) return 'erase';
+  if (state.selected.kind === 'mob') return 'spawn';
   return state.selected.kind === 'tool' ? state.selected.id : 'add';
+}
+
+// ----- creatures and the mouse -----
+// With a creature or the Grab tool selected, pressing on a creature picks it
+// up; with a creature selected, pressing anywhere else drops a new one in.
+function dropHeld() {
+  if (state.held) creatures.release(state.held);
+  state.held = null;
+}
+// Position under the pointer in the 2D view, in (fractional) cell units.
+function point2d(clientX, clientY) {
+  const r = r2d.canvas.getBoundingClientRect();
+  const { W, H } = world;
+  return { x: (clientX - r.left) / r.width * W, y: H - (clientY - r.top) / r.height * H };
+}
+function press2d(mode, e) {
+  const p = point2d(e.clientX, e.clientY);
+  const hit = creatures.pickPoint(p.x, p.y, r2d.z + 0.5, mode === 'grab' ? 2.6 : 1.4, true);
+  if (hit) { state.held = hit.c; creatures.startGrab(hit.c, hit.k); creatures.moveGrab(hit.c, p.x, p.y, hit.c.pz[hit.k]); return; }
+  if (mode !== 'spawn') return;
+  if (p.x < 0 || p.y < 0 || p.x >= world.W || p.y >= world.H) return;
+  creatures.spawn(state.selected.id, p.x, Math.floor(p.y), r2d.z, { lane: r2d.z });
+}
+// 3D: a ray from the camera (orbit view: through the mouse; fly mode: the crosshair).
+function press3d(mode, ray, pick) {
+  const ground = pick && pick.hit ? Math.hypot(pick.hit[0] + 0.5 - ray.o[0], pick.hit[1] + 0.5 - ray.o[1], pick.hit[2] + 0.5 - ray.o[2]) : 1e9;
+  const hit = creatures.pickRay(ray.o, ray.d, ground + 1, mode === 'grab' ? 2.2 : 1.2);
+  if (hit) { state.held = hit.c; state.holdDist = hit.t; creatures.startGrab(hit.c, hit.k); return; }
+  if (mode !== 'spawn' || !pick || !pick.place) return;
+  const [x, y, z] = pick.place;
+  creatures.spawn(state.selected.id, x + 0.5, y, z + 0.5);
+}
+function carry3d(ray) {
+  const c = state.held;
+  if (!c) return;
+  const d = state.holdDist;
+  creatures.moveGrab(c, ray.o[0] + ray.d[0] * d, ray.o[1] + ray.d[1] * d, ray.o[2] + ray.d[2] * d);
 }
 
 // 2D: left paints, right erases, middle-drag pans. On touch, one finger
@@ -364,9 +475,11 @@ r2d.canvas.addEventListener('pointerdown', e => {
   }
   if (e.button === 1) { e.preventDefault(); panFrom = { x: e.clientX, y: e.clientY }; return; }
   if (e.button !== 0 && e.button !== 2) return;
-  state.painting = modeForButton(e.button);
-  state.lastCell = null;
+  const mode = modeForButton(e.button);
   dismissCoach();
+  if (mode === 'spawn' || mode === 'grab') { press2d(mode, e); return; }
+  state.painting = mode;
+  state.lastCell = null;
 });
 r2d.canvas.addEventListener('pointermove', e => {
   state.pointer = { x: e.clientX, y: e.clientY };
@@ -391,7 +504,7 @@ r2d.canvas.addEventListener('pointerup', endPointer);
 r2d.canvas.addEventListener('pointercancel', endPointer);
 r2d.canvas.addEventListener('pointerleave', () => { if (!state.painting) state.pointer = null; });
 const stopPaint = () => { state.painting = null; state.lastCell = null; };
-window.addEventListener('pointerup', stopPaint);
+window.addEventListener('pointerup', () => { stopPaint(); dropHeld(); });
 window.addEventListener('pointercancel', stopPaint);
 
 let dragLook = null; // fly mode without mouse capture: left-drag looks, a click places
@@ -401,9 +514,11 @@ function attach3dInput(canvas) {
     state.pointer = { x: e.clientX, y: e.clientY };
     if (state.fly) { flyPointerDown(e); return; }
     if (e.button !== 0) return;
-    if (e.pointerType === 'touch' && !e.isPrimary) { stopPaint(); return; }
-    state.painting = modeForButton(0);
+    if (e.pointerType === 'touch' && !e.isPrimary) { stopPaint(); dropHeld(); return; }
+    const mode = modeForButton(0);
     dismissCoach();
+    if (mode === 'spawn' || mode === 'grab') { press3d(mode, r3d.ray(e.clientX, e.clientY), r3d.pick(e.clientX, e.clientY)); return; }
+    state.painting = mode;
   });
   canvas.addEventListener('pointermove', e => {
     state.pointer = { x: e.clientX, y: e.clientY };
@@ -417,7 +532,12 @@ function attach3dInput(canvas) {
   });
   canvas.addEventListener('pointerup', e => {
     if (dragLook && e.button === 0) {
-      if (dragLook.moved < 6) flyAct(modeForButton(0), true); // a click, not a drag: place once
+      if (dragLook.moved < 6) {
+        // A click, not a drag: place once (or drop a creature in).
+        const mode = modeForButton(0);
+        if (mode === 'spawn') press3d(mode, r3d.rayCenter(), r3d.pickCenter());
+        else flyAct(mode, true);
+      }
       dragLook = null;
     }
   });
@@ -474,8 +594,13 @@ function flyPointerDown(e) {
   if (e.button === 1) { pickAimed(); return; }
   if (e.button === 2) { flyAct('erase', true); state.painting = 'erase'; return; }
   if (e.button !== 0) return;
-  if (state.noLock) { dragLook = { x: e.clientX, y: e.clientY, moved: 0 }; return; }
   const mode = modeForButton(0);
+  if (mode === 'grab' || mode === 'spawn') {
+    const ray = r3d.rayCenter(), pick = r3d.pickCenter();
+    const hit = creatures.pickRay(ray.o, ray.d, 1e9, 1.6);
+    if (hit || mode === 'grab' || !state.noLock) { press3d(mode, ray, pick); return; }
+  }
+  if (state.noLock) { dragLook = { x: e.clientX, y: e.clientY, moved: 0 }; return; }
   flyAct(mode, true);
   state.painting = mode;
 }
@@ -501,6 +626,8 @@ function flyAct(mode, now) {
   if (!target) return;
   const r = state.brush.fly + 0.5;
   const t = state.selected.kind === 'el' ? state.selected.id : 0;
+  if (mode === 'erase') creatures.eraseAt(target[0] + 0.5, target[1] + 0.5, target[2] + 0.5, r);
+  if (mode === 'spawn' || mode === 'grab') return;
   world.paint(target[0], target[1], target[2], r, mode, t, r, 9); // full blocks, not a sprinkle
 }
 
@@ -509,6 +636,7 @@ function paintFly(dt) {
   const rr = (keysDown.has('KeyD') ? 1 : 0) - (keysDown.has('KeyA') ? 1 : 0);
   const u = (keysDown.has('Space') ? 1 : 0) - (keysDown.has('ShiftLeft') || keysDown.has('ShiftRight') ? 1 : 0);
   r3d.flyStep(dt, { f, r: rr, u });
+  if (state.held) carry3d(r3d.rayCenter());
   const p = r3d.pickCenter();
   r3d.showCursor(p ? (p.hit || p.place) : null, state.brush.fly);
   if (state.painting) flyAct(state.painting, false);
@@ -528,7 +656,12 @@ function paint2d() {
   const c = r2d.toCell(state.pointer.x, state.pointer.y);
   const r = state.brush['2d'];
   const z = r2d.z;
-  r2d.cursor = c.inside ? { x: c.x, y: c.y, r } : null;
+  const mobTool = state.selected.kind === 'mob' || (state.selected.kind === 'tool' && state.selected.id === 'grab');
+  r2d.cursor = c.inside && !mobTool ? { x: c.x, y: c.y, r } : null;
+  if (state.held) {
+    const p = point2d(state.pointer.x, state.pointer.y);
+    creatures.moveGrab(state.held, p.x, p.y, state.held.grab ? state.held.grab.z : r2d.z + 0.5);
+  }
   if (state.painting) {
     const from = state.lastCell || c;
     const steps = Math.max(1, Math.abs(c.x - from.x), Math.abs(c.y - from.y));
@@ -537,6 +670,7 @@ function paint2d() {
     for (let s = 0; s <= steps; s += every) {
       const x = Math.round(from.x + (c.x - from.x) * s / steps), y = Math.round(from.y + (c.y - from.y) * s / steps);
       world.paint(x, y, z, r, state.painting, t, Math.min(r, SLICE_DEPTH), SLICE_POUR);
+      if (state.painting === 'erase') creatures.eraseAt(x + 0.5, y + 0.5, z + 0.5, r, true);
     }
     state.lastCell = c;
   }
@@ -547,18 +681,20 @@ function paint3d() {
   if (!state.pointer) { r3d.showCursor(null); return null; }
   const p = r3d.pick(state.pointer.x, state.pointer.y);
   const r = state.brush['3d'];
-  const mode = state.painting || (state.selected.kind === 'tool' ? state.selected.id : 'add');
-  const target = p ? (mode === 'add' ? p.place : (p.hit || p.place)) : null;
-  r3d.showCursor(target, r);
+  const mode = state.painting || modeForButton(0);
+  const target = p ? (mode === 'add' || mode === 'spawn' ? p.place : (p.hit || p.place)) : null;
+  r3d.showCursor(mode === 'grab' ? null : target, mode === 'spawn' ? 0 : r);
+  if (state.held) carry3d(r3d.ray(state.pointer.x, state.pointer.y));
   if (state.painting && target) {
     const t = state.selected.kind === 'el' ? state.selected.id : 0;
     world.paint(target[0], target[1], target[2], r + 0.5, state.painting, t);
+    if (state.painting === 'erase') creatures.eraseAt(target[0] + 0.5, target[1] + 0.5, target[2] + 0.5, r + 0.5);
   }
   const look = p && (p.hit || p.place);
   return look ? world.index(look[0], look[1], look[2]) : null;
 }
 
-const KEY_TOOLS = { e: 'erase', h: 'heat', j: 'cool' };
+const KEY_TOOLS = { e: 'erase', h: 'heat', j: 'cool', g: 'grab' };
 window.addEventListener('keydown', e => {
   if (e.target instanceof HTMLInputElement && e.target.type !== 'range') return;
   if (e.metaKey || e.ctrlKey || e.altKey) return;
@@ -637,9 +773,27 @@ function dismissCoach() {
 // ----- inspector -----
 const insName = $('#ins-name'), insTemp = $('#ins-temp'), inspector = $('#inspector');
 let lastIns = '';
-function inspect(i) {
+function hoverMob2d() {
+  if (!state.pointer || !creatures.list.length) return null;
+  const p = point2d(state.pointer.x, state.pointer.y);
+  const hit = creatures.pickPoint(p.x, p.y, r2d.z + 0.5, 1.6, true);
+  return hit ? hit.c : null;
+}
+function hoverMob3d() {
+  if (!r3d || !creatures.list.length) return null;
+  if (!state.fly && !state.pointer) return null;
+  const ray = state.fly ? r3d.rayCenter() : r3d.ray(state.pointer.x, state.pointer.y);
+  const hit = creatures.pickRay(ray.o, ray.d, 1e9, 1);
+  return hit ? hit.c : null;
+}
+function inspect(i, mob) {
   let text = '';
-  if (i == null) { inspector.classList.add('idle'); text = 'idle'; }
+  if (mob) {
+    inspector.classList.remove('idle');
+    const c = mob.sp.headK;
+    text = creatures.describe(mob) + '|' + fmtTemp(world.temp[world.index(Math.max(0, Math.min(world.W - 1, Math.floor(mob.px[c]))), Math.max(0, Math.min(world.H - 1, Math.floor(mob.py[c]))), Math.max(0, Math.min(world.D - 1, Math.floor(mob.pz[c]))))]);
+    i = -1;
+  } else if (i == null) { inspector.classList.add('idle'); text = 'idle'; }
   else {
     inspector.classList.remove('idle');
     const t = world.type[i];
@@ -700,6 +854,7 @@ function weatherTick(now) {
   const x = 4 + ((Math.random() * (world.W - 8)) | 0);
   const z = state.mode === '2d' || !r3d ? r2d.z : 4 + ((Math.random() * (world.D - 8)) | 0);
   world.strike(x, z);
+  creatures.lightning(x, z);
   const f = $('#flash');
   f.classList.remove('on'); void f.offsetWidth; f.classList.add('on');
 }
@@ -720,29 +875,30 @@ function frame(now) {
     // out, so heavy moments slow the simulation slightly instead of the frame rate.
     const t0 = performance.now();
     let n = 0;
-    while (state.acc >= 1 && n < 3 && (n === 0 || performance.now() - t0 < 10)) { weatherStep(); world.step(); state.acc -= 1; n++; }
+    while (state.acc >= 1 && n < 3 && (n === 0 || performance.now() - t0 < 10)) { weatherStep(); creatures.tick(); state.acc -= 1; n++; }
     if (state.acc > 3) state.acc = 0;
   } else if (state.stepOnce) {
-    world.step();
+    creatures.tick();
     state.stepOnce = false;
   }
   weatherTick(now);
   if (is2d) r2d.render(now / 1000, state.thermal);
   else r3d.render(dt, !state.paused);
   while (world.events.length) addDiscovery(world.events.shift());
-  inspect(hover);
+  inspect(hover, is2d ? hoverMob2d() : hoverMob3d());
   fpsT += dt; fpsN++;
   if (fpsT > 1) { $('#fps').textContent = `${Math.round(fpsN / fpsT)} fps`; fpsT = 0; fpsN = 0; }
   requestAnimationFrame(frame);
 }
 
 // Handy for poking at the simulation from the browser console.
-window.sandgrove = { world, r2d, get r3d() { return r3d; }, El };
+window.sandgrove = { world, creatures, r2d, get r3d() { return r3d; }, El };
 
 // ----- start -----
 select(state.selected);
 setSlice(r2d.z);
 setWeather(state.weather);
+setGore(creatures.gore);
 setSpeed(state.speed);
 syncBrush();
 drawSwatches();

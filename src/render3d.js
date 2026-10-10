@@ -374,6 +374,24 @@ export class Renderer3D {
     this.cursor.visible = false;
     scene.add(this.cursor);
 
+    // Creatures: one box per body part, all in two instanced meshes (lit
+    // parts, and glowing eyes).
+    const unit = new THREE.BoxGeometry(1, 1, 1);
+    this.mobMesh = new THREE.InstancedMesh(unit, new THREE.MeshLambertMaterial({ color: '#ffffff' }), 1200);
+    this.mobGlow = new THREE.InstancedMesh(unit, new THREE.MeshBasicMaterial({ color: '#ffffff' }), 200);
+    for (const m of [this.mobMesh, this.mobGlow]) {
+      m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      m.setColorAt(0, new THREE.Color());
+      m.count = 0;
+      m.frustumCulled = false;
+      scene.add(m);
+    }
+    this.mobMesh.castShadow = true;
+    this.mobMesh.receiveShadow = true;
+    this.creatures = null;
+    this.tmp = { m: new THREE.Matrix4(), q: new THREE.Quaternion(), p: new THREE.Vector3(), s: new THREE.Vector3(), a: new THREE.Vector3(), b: new THREE.Vector3(),
+      up: new THREE.Vector3(0, 1, 0), c: new THREE.Color(), x: new THREE.Vector3(), y: new THREE.Vector3(), z: new THREE.Vector3(), colors: new Map() };
+
     // 4× multisampling smooths block edges so they do not crawl as the camera moves.
     const composer = this.composer = new EffectComposer(renderer,
       new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: 4 }));
@@ -697,8 +715,129 @@ export class Renderer3D {
     for (const m of this.cursor.children) m.material.color.set(hex);
   }
 
+  // ----- creatures -----
+  mobColor(hex) {
+    const cache = this.tmp.colors;
+    let c = cache.get(hex);
+    if (!c) { c = new THREE.Color(hex); cache.set(hex, c); }
+    return c;
+  }
+
+  updateMobs() {
+    const cr = this.creatures;
+    const mesh = this.mobMesh, glow = this.mobGlow;
+    let n = 0, g = 0;
+    if (!cr || !cr.list.length) { mesh.count = 0; glow.count = 0; return; }
+    const { W, D } = this.world;
+    const T = this.tmp, M = T.m, Q = T.q, P = T.p, S = T.s, A = T.a, B = T.b, C = T.c;
+    const blood = this.mobColor('#8a1915'), charC = this.mobColor('#2a1d17'), flashW = this.mobColor('#fff6e6'), flashR = this.mobColor('#ff4a3a');
+    const flame = this.mobColor('#ff9a2a'), outline = this.mobColor('#1b130e');
+    const box = (pos, quat, sx, sy, sz, col, glowing) => {
+      if (glowing ? g >= 199 : n >= 1199) return;
+      S.set(sx, sy, sz);
+      M.compose(pos, quat, S);
+      if (glowing) { glow.setMatrixAt(g, M); glow.setColorAt(g, col); g++; }
+      else { mesh.setMatrixAt(n, M); mesh.setColorAt(n, col); n++; }
+    };
+    for (const c of cr.list) {
+      const sp = c.sp;
+      const at = (k, v) => v.set(c.px[k] - W / 2, c.py[k], c.pz[k] - D / 2);
+      const shade = (hex, k) => {
+        C.copy(this.mobColor(hex));
+        if (cr.gore && k >= 0 && c.wound[k] > 6) C.lerp(blood, Math.min(0.55, c.wound[k] / 90));
+        if (c.char > 0) C.lerp(charC, Math.min(1, c.char * 1.1) * 0.88);
+        if (!c.alive) C.multiplyScalar(0.8);
+        if (c.fire > 0) C.lerp(flame, 0.25 + 0.15 * Math.sin(this.time * 20 + c.id));
+        if (c.hurtFlash > 0) C.lerp(cr.gore ? flashR : flashW, 0.5);
+        return C;
+      };
+      for (const s of c.sticks) {
+        if (s.broken || !s.thick) continue;
+        at(s.a, A); at(s.b, B);
+        P.addVectors(A, B).multiplyScalar(0.5);
+        B.sub(A);
+        const len = B.length();
+        if (len < 1e-4) continue;
+        Q.setFromUnitVectors(T.up, B.multiplyScalar(1 / len));
+        const k = c.wound[s.a] > c.wound[s.b] ? s.a : s.b;
+        box(P, Q, s.thick, len + s.thick * 0.55, s.thick, shade(c.colors[s.color] || c.colors.body, k), false);
+      }
+      Q.identity();
+      for (const d of sp.dotList) { at(d.k, P); box(P, Q, d.r * 2, d.r * 2, d.r * 2, shade(c.colors[d.color], d.k), false); }
+      // Head frame: up from neck to head, forward where it faces.
+      const h = sp.headK;
+      at(h, A); at(sp.neckK, B);
+      const up = T.y.subVectors(A, B);
+      if (sp.head === 'fish') up.set(0, 1, 0);
+      up.normalize();
+      const fw = T.z.set(Math.cos(c.heading), 0, Math.sin(c.heading));
+      if (sp.head === 'fish') { at(h, A); at(sp.idx.mid, B); fw.subVectors(A, B).normalize(); }
+      fw.addScaledVector(up, -fw.dot(up));
+      if (fw.lengthSq() < 1e-6) fw.set(1, 0, 0);
+      fw.normalize();
+      const side = T.x.crossVectors(up, fw);
+      M.makeBasis(side, up, fw);
+      Q.setFromRotationMatrix(M);
+      const hs = sp.headR * 1.75;
+      const off = (f, u, sd, out) => out.copy(A).addScaledVector(fw, f).addScaledVector(up, u).addScaledVector(side, sd);
+      const eyeCol = c.alive ? this.mobColor(c.colors.eye) : outline;
+      const eyesGlow = c.alive && (c.kind === 'robot' || c.kind === 'zombie');
+      if (sp.head === 'round' || sp.head === 'box') {
+        box(A, Q, hs, hs, hs, shade(c.colors.skin, h), false);
+        if (sp.head === 'round') box(off(-hs * 0.08, hs * 0.38, 0, P), Q, hs * 1.08, hs * 0.32, hs * 1.12, shade(c.colors.hair, h), false);
+        else {
+          box(off(hs * 0.42, hs * 0.08, 0, P), Q, hs * 0.22, hs * 0.3, hs * 0.92, shade('#252b33', h), false);
+          box(off(0, hs * 0.75, 0, P), Q, 0.18, hs * 0.5, 0.18, shade(c.colors.shirt, h), false);
+          box(off(0, hs, 0, P), Q, 0.32, 0.32, 0.32, this.mobColor(c.alive ? '#e2503a' : '#1b130e'), c.alive);
+        }
+        for (const sd of [-0.26, 0.26]) box(off(hs * 0.5 + 0.02, hs * 0.06, sd * hs, P), Q, 0.12, hs * 0.2, hs * 0.18, eyeCol, eyesGlow);
+      } else if (sp.head === 'chicken') {
+        box(A, Q, hs, hs, hs * 0.9, shade(c.colors.body, h), false);
+        box(off(-hs * 0.1, hs * 0.62, 0, P), Q, hs * 0.55, hs * 0.35, hs * 0.18, shade(c.colors.comb, h), false);
+        box(off(hs * 0.65, -hs * 0.05, 0, P), Q, hs * 0.45, hs * 0.25, hs * 0.3, shade(c.colors.beak, h), false);
+        for (const sd of [-0.46, 0.46]) box(off(hs * 0.22, hs * 0.12, sd * hs, P), Q, hs * 0.18, hs * 0.18, 0.06, eyeCol, false);
+        // Wings, flapping while it falls.
+        const flap = c.flapping ? Math.sin(c.age * 0.9) * 0.5 : 0;
+        at(sp.rootK, B);
+        for (const sd of [-1, 1]) {
+          P.copy(B).addScaledVector(side, sd * 0.85).addScaledVector(up, 0.15 + flap * 0.4);
+          box(P, Q, 1.3, 0.75, 0.25, shade(c.colors.tail, sp.rootK), false);
+        }
+      } else if (sp.head === 'fish') {
+        for (const sd of [-0.5, 0.5]) box(off(0.25, 0.12, sd, P), Q, 0.2, 0.22, 0.08, eyeCol, false);
+        at(sp.idx.mid, B);
+        P.copy(B).addScaledVector(fw, 0.35);
+        box(P, Q, 0.3, 1.5, 1.5, shade(c.colors.stripe, sp.idx.mid), false);
+      }
+    }
+    mesh.count = n; glow.count = g;
+    mesh.instanceMatrix.needsUpdate = true; glow.instanceMatrix.needsUpdate = true;
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+    if (glow.instanceColor) glow.instanceColor.needsUpdate = true;
+  }
+
+  // The mouse ray in cell coordinates, for grabbing creatures.
+  ray(clientX, clientY) {
+    const rect = this.canvas.getBoundingClientRect();
+    this.ndc.set(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
+    this.raycaster.setFromCamera(this.ndc, this.camera);
+    const o = this.raycaster.ray.origin, d = this.raycaster.ray.direction, { W, D } = this.world;
+    return { o: [o.x + W / 2, o.y, o.z + D / 2], d: [d.x, d.y, d.z] };
+  }
+  rayCenter() {
+    const r = this.canvas.getBoundingClientRect();
+    return this.ray(r.left + r.width / 2, r.top + r.height / 2);
+  }
+  // Camera position and forward direction, in cell coordinates.
+  eye() {
+    const { W, D } = this.world, p = this.camera.position, d = new THREE.Vector3();
+    this.camera.getWorldDirection(d);
+    return { o: [p.x + W / 2, p.y, p.z + D / 2], d: [d.x, d.y, d.z] };
+  }
+
   render(dt, simulating) {
     this.time += dt;
+    this.updateMobs();
     this.updateChunks(simulating ? 5 : 10);
     if (!this.fly) this.controls.update();
     this.sky.position.copy(this.camera.position);

@@ -5,6 +5,9 @@
 
 import * as El from './elements.js';
 import { rng } from './scenes.js';
+import { drawCreature, blend as blendC } from './creatureArt.js';
+
+const MOB_S = 3; // creature pixels per world cell: creatures are drawn finer than the world
 
 const {
   EMPTY, STONE, DIRT, SAND, SNOW, WATER, OIL, ACID, LAVA, SMOKE, FIRE, WOOD, PLANT,
@@ -148,7 +151,16 @@ export class Renderer2D {
     this.glowCanvas = document.createElement('canvas');
     this.glowCanvas.className = 'glow2d';
     for (const c of [this.canvas, this.glowCanvas]) { c.width = W; c.height = H; }
-    this.wrap.append(this.canvas, this.glowCanvas);
+    // Creatures get their own layer, drawn at a finer pixel size.
+    this.mobCanvas = document.createElement('canvas');
+    this.mobCanvas.className = 'mob2d';
+    this.mobCanvas.width = W * MOB_S; this.mobCanvas.height = H * MOB_S;
+    this.mctx = this.mobCanvas.getContext('2d');
+    this.mimg = this.mctx.createImageData(W * MOB_S, H * MOB_S);
+    this.mbuf = new Uint32Array(this.mimg.data.buffer);
+    this.mobShown = false;
+    this.creatures = null;
+    this.wrap.append(this.canvas, this.mobCanvas, this.glowCanvas);
     stage.append(this.wrap);
     this.ctx = this.canvas.getContext('2d');
     this.gctx = this.glowCanvas.getContext('2d');
@@ -220,7 +232,7 @@ export class Renderer2D {
     top = ch <= h ? (h - ch) / 2 : Math.min(0, Math.max(h - ch, top));
     cam.u = (w / 2 - left) / s; cam.v = (h / 2 - top) / s;
     this.scale = s;
-    for (const c of [this.canvas, this.glowCanvas]) {
+    for (const c of [this.canvas, this.glowCanvas, this.mobCanvas]) {
       c.style.width = Math.round(cw) + 'px'; c.style.height = Math.round(ch) + 'px';
       c.style.left = Math.round(left) + 'px'; c.style.top = Math.round(top) + 'px';
     }
@@ -424,6 +436,36 @@ export class Renderer2D {
     this.drawCursor();
     this.ctx.putImageData(this.img, 0, 0);
     this.gctx.putImageData(this.gimg, 0, 0);
+    this.drawMobs(time);
+  }
+
+  // Creatures within a few cells of the slice, on their own finer layer.
+  // Under water they take on the water's colour.
+  drawMobs(time) {
+    const cr = this.creatures;
+    const z = this.z + 0.5;
+    const near = cr ? cr.list.filter(c => Math.abs(c.pz[c.sp.rootK] - z) <= 3.5) : [];
+    if (!near.length) {
+      if (this.mobShown) { this.mbuf.fill(0); this.mctx.putImageData(this.mimg, 0, 0); this.mobShown = false; }
+      return;
+    }
+    const { W, H } = this.world, BW = W * MOB_S, BH = H * MOB_S;
+    const sl = this.slice;
+    this.mbuf.fill(0);
+    const tint = (px, py, col) => {
+      const x = (px / MOB_S) | 0, y = H - 1 - ((py / MOB_S) | 0);
+      if (y < 0 || y >= H) return col;
+      const t = sl.type[x + W * y];
+      return STATE[t] === El.LIQUID ? blendC(col, PAL[t][0], t === WATER || t === BRINE ? 0.38 : 0.6) : col;
+    };
+    const underwater = c => {
+      const k = c.sp.headK;
+      return c.sp.breathes === 'air' && STATE[this.world.type[this.world.index(Math.floor(c.px[k]), Math.min(H - 1, Math.floor(c.py[k])), Math.floor(c.pz[k]))]] === El.LIQUID;
+    };
+    const o = { buf: this.mbuf, BW, BH, S: MOB_S, x0: 0, y0: H, gore: cr.gore, tick: Math.floor(time * 12), tint, marks: true, underwater };
+    for (const c of near) drawCreature(c, o);
+    this.mctx.putImageData(this.mimg, 0, 0);
+    this.mobShown = true;
   }
 
   drawCursor() {

@@ -1,0 +1,223 @@
+// Pixel art for creatures. Draws a ragdoll into a 32-bit pixel buffer at a
+// few pixels per world cell, with a dark outline, a face, and the marks of
+// what has happened to it: wounds, burns, a flash when it is hit.
+
+import { hexToRgb } from './elements.js';
+
+const pack = (r, g, b) => ((255 << 24) | (b << 16) | (g << 8) | r) >>> 0;
+const packHex = h => { const [r, g, b] = hexToRgb(h); return pack(r, g, b); };
+const R = c => c & 255, G = c => (c >> 8) & 255, B = c => (c >> 16) & 255;
+export function blend(a, b, f) {
+  return pack(R(a) + (R(b) - R(a)) * f | 0, G(a) + (G(b) - G(a)) * f | 0, B(a) + (B(b) - B(a)) * f | 0);
+}
+const scale = (c, f) => pack(Math.min(255, R(c) * f) | 0, Math.min(255, G(c) * f) | 0, Math.min(255, B(c) * f) | 0);
+
+const OUTLINE = packHex('#1b130e');
+const BLOOD = [packHex('#8a1915'), packHex('#a8221b'), packHex('#6e120f')];
+const CHAR = packHex('#2a1d17');
+const WHITE = packHex('#fff6e6'), HURT = packHex('#ff4a3a');
+const FLAME = [packHex('#ffb636'), packHex('#ffe07a'), packHex('#ff8a1f')];
+const BANG = packHex('#fff3c4'), BAR_BG = packHex('#2a211b');
+const BAR = [packHex('#d8452c'), packHex('#e8b53a'), packHex('#7cc04a')];
+const BUBBLE = packHex('#e8fbf6');
+const VISOR = packHex('#252b33'), ANTENNA = packHex('#e2503a');
+
+function hash(x, y) {
+  let h = (Math.imul(x, 374761393) + Math.imul(y, 668265263)) | 0;
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+}
+
+// Packed colours for a creature, cached until its colours change.
+function palette(c) {
+  if (c._pal && c._palFrom === c.colors) return c._pal;
+  const p = {};
+  for (const [k, v] of Object.entries(c.colors)) if (typeof v === 'string') p[k] = packHex(v);
+  c._pal = p; c._palFrom = c.colors;
+  return p;
+}
+
+// Draw creature c. o: { buf, BW, BH, S (pixels per cell), x0, y0 (world
+// position of the buffer's top-left corner), gore, tick, tint(X, Y, col) }.
+export function drawCreature(c, o) {
+  const { buf, BW, BH, S, x0, y0, gore, tick } = o;
+  const sp = c.sp, pal = palette(c);
+  const tint = o.tint;
+  const X = wx => (wx - x0) * S, Y = wy => (y0 - wy) * S;
+  const k0 = sp.rootK, h = sp.headK, nk = sp.neckK;
+  const rootZ = c.pz[k0];
+  const facing = Math.cos(c.heading) >= 0 ? 1 : -1;
+  const char = Math.min(1, c.char * 1.1);
+  const flash = c.hurtFlash > 0 ? (gore ? HURT : WHITE) : 0;
+  const burning = c.fire > 0;
+
+  // Final colour of one pixel of a part.
+  const shadeOf = (base, k, px, py) => {
+    let col = base;
+    if (gore && k >= 0 && c.wound[k] > 4 && hash(px * 7 + c.id, py * 13) < Math.min(0.6, c.wound[k] / 80)) col = BLOOD[(hash(px, py + 3) * 3) | 0];
+    if (char > 0) col = blend(col, CHAR, char * 0.88);
+    if (!c.alive) col = blend(col, scale(col, 0.75), 0.5);
+    if (burning && hash(px + tick * 3, py - tick * 5) < 0.28) col = blend(col, FLAME[(hash(px, py + tick) * 3) | 0], 0.75);
+    if (flash) col = blend(col, flash, 0.55);
+    return col;
+  };
+  const put = (px, py, col) => {
+    if (px < 0 || py < 0 || px >= BW || py >= BH) return;
+    buf[py * BW + px] = tint ? tint(px, py, col) : col;
+  };
+  const disc = (cx, cy, r, col, k, outline) => {
+    const rr = r + (outline ? 1 : 0), r2 = rr * rr;
+    const xa = Math.floor(cx - rr), xb = Math.ceil(cx + rr), ya = Math.floor(cy - rr), yb = Math.ceil(cy + rr);
+    for (let py = ya; py <= yb; py++) for (let px = xa; px <= xb; px++) {
+      const dx = px + 0.5 - cx, dy = py + 0.5 - cy;
+      if (dx * dx + dy * dy > r2) continue;
+      put(px, py, outline ? OUTLINE : shadeOf(col, k, px, py));
+    }
+  };
+  const line = (ax, ay, bx, by, r, col, k, outline) => {
+    const len = Math.hypot(bx - ax, by - ay), n = Math.max(1, Math.ceil(len * 2));
+    for (let j = 0; j <= n; j++) disc(ax + (bx - ax) * j / n, ay + (by - ay) * j / n, r, col, k, outline);
+  };
+
+  // Parts, far side first.
+  const parts = [];
+  for (const s of c.sticks) {
+    if (s.broken || !s.thick) continue;
+    const z = (c.pz[s.a] + c.pz[s.b]) / 2;
+    parts.push({ kind: 'stick', s, z, far: z < rootZ - 0.25 });
+  }
+  for (const d of sp.dotList) parts.push({ kind: 'dot', d, z: c.pz[d.k], far: c.pz[d.k] < rootZ - 0.25 });
+  if (sp.flaps) parts.push({ kind: 'wing', z: rootZ + 0.5, far: false });
+  if (sp.head !== 'fish') parts.push({ kind: 'head', z: c.pz[h] + 0.01, far: false });
+  parts.sort((a, b) => a.z - b.z);
+
+  const hx = X(c.px[h]), hy = Y(c.py[h]);
+  // Head frame: "up" from neck to head, "forward" across it toward where it faces.
+  let ux = c.px[h] - c.px[nk], uy = c.py[h] - c.py[nk];
+  if (sp.head === 'fish') { ux = -(c.py[h] - c.py[nk]) * facing; uy = (c.px[h] - c.px[nk]) * facing; }
+  const ul = Math.hypot(ux, uy) || 1; ux /= ul; uy /= ul;
+  const fwx = uy * facing, fwy = -ux * facing; // forward in world units (x right, y up)
+  const HR = sp.headR * S;
+
+  const drawPart = (p, outline) => {
+    if (p.kind === 'stick') {
+      const s = p.s;
+      let col = pal[s.color] ?? pal.body;
+      if (p.far && !outline) col = scale(col, 0.8);
+      const k = c.wound[s.a] > c.wound[s.b] ? s.a : s.b;
+      line(X(c.px[s.a]), Y(c.py[s.a]), X(c.px[s.b]), Y(c.py[s.b]), Math.max(0.6, s.thick * S / 2), col, k, outline);
+      if (!outline && c.colors.torn && s.color === 'shirt') {
+        // Rips in a zombie's clothes.
+        const mx = X((c.px[s.a] + c.px[s.b]) / 2), my = Y((c.py[s.a] + c.py[s.b]) / 2);
+        put(Math.floor(mx + 1), Math.floor(my), shadeOf(pal.skin, k, 0, 0));
+        put(Math.floor(mx - 1), Math.floor(my + 2), shadeOf(pal.skin, k, 0, 0));
+      }
+    } else if (p.kind === 'dot') {
+      let col = pal[p.d.color];
+      if (p.far && !outline) col = scale(col, 0.8);
+      disc(X(c.px[p.d.k]), Y(c.py[p.d.k]), p.d.r * S, col, p.d.k, outline);
+    } else if (p.kind === 'wing') {
+      const flap = c.flapping ? Math.sin(c.age * 0.9) * 0.5 : 0;
+      disc(X(c.px[k0] - 0.1 * facing), Y(c.py[k0] + 0.15 + flap), 0.62 * S, pal.tail, k0, outline);
+    } else drawHead(outline);
+  };
+
+  const drawHead = outline => {
+    const style = sp.head;
+    if (style === 'box') {
+      const half = HR * 0.92 + (outline ? 1 : 0);
+      const ext = Math.ceil(half * 1.5);
+      for (let py = Math.floor(hy - ext); py <= Math.ceil(hy + ext); py++) for (let px = Math.floor(hx - ext); px <= Math.ceil(hx + ext); px++) {
+        const dx = px + 0.5 - hx, dy = -(py + 0.5 - hy);
+        const lu = dx * ux + dy * uy, lf = dx * fwx + dy * fwy;
+        if (Math.abs(lu) > half || Math.abs(lf) > half) continue;
+        if (outline) { put(px, py, OUTLINE); continue; }
+        let col = pal.skin;
+        if (lu > -0.1 * half && lu < 0.42 * half && lf > -0.35 * half) col = VISOR;
+        put(px, py, shadeOf(col, h, px, py));
+      }
+      // Antenna.
+      const ax = hx + ux * HR * 1.55, ay = hy - uy * HR * 1.55;
+      if (outline) disc(ax, ay, 1, OUTLINE, -1, true);
+      else { line(hx + ux * HR, hy - uy * HR, ax, ay, 0.5, pal.shirt, h, false); put(Math.floor(ax), Math.floor(ay), c.alive ? ANTENNA : OUTLINE); }
+      if (!outline) {
+        const eye = c.alive ? pal.eye : OUTLINE;
+        for (const f of [0.3, 0.72]) put(Math.floor(hx + fwx * HR * f + ux * HR * 0.16), Math.floor(hy - fwy * HR * f - uy * HR * 0.16), eye);
+      }
+      return;
+    }
+    const r = HR;
+    if (outline) {
+      disc(hx, hy, r, 0, h, true);
+      if (style === 'chicken') {
+        disc(hx + ux * r * 0.95 - fwx * r * 0.2, hy - uy * r * 0.95 + fwy * r * 0.2, r * 0.42, 0, h, true);
+        disc(hx + fwx * r * 1.05, hy - fwy * r * 1.05, r * 0.4, 0, h, true);
+      }
+      return;
+    }
+    // Round head: skin with hair on top and at the back.
+    const r2 = r * r;
+    for (let py = Math.floor(hy - r); py <= Math.ceil(hy + r); py++) for (let px = Math.floor(hx - r); px <= Math.ceil(hx + r); px++) {
+      const dx = px + 0.5 - hx, dy = -(py + 0.5 - hy);
+      if (dx * dx + dy * dy > r2) continue;
+      const lu = (dx * ux + dy * uy) / r, lf = (dx * fwx + dy * fwy) / r;
+      let col = style === 'chicken' ? pal.body : pal.skin;
+      if (style === 'round' && (lu > 0.28 || (lf < -0.3 && lu > -0.45))) {
+        col = pal.hair;
+        if (c.colors.torn && hash(px, py) < 0.3) col = pal.skin; // patchy
+      }
+      put(px, py, shadeOf(col, h, px, py));
+    }
+    if (style === 'chicken') {
+      disc(hx + ux * r * 0.95 - fwx * r * 0.2, hy - uy * r * 0.95 + fwy * r * 0.2, r * 0.42, pal.comb, h, false);
+      disc(hx + fwx * r * 1.05, hy - fwy * r * 1.05, r * 0.4, pal.beak, h, false);
+      put(Math.floor(hx + fwx * r * 0.75 - ux * r * 0.55), Math.floor(hy - fwy * r * 0.75 + uy * r * 0.55), shadeOf(pal.comb, h, 0, 0));
+    }
+    // Eye, or crosses when dead.
+    const ex = Math.floor(hx + fwx * r * 0.5 + ux * r * 0.05), ey = Math.floor(hy - fwy * r * 0.5 - uy * r * 0.05);
+    if (c.alive) put(ex, ey, pal.eye);
+    else { put(ex - 1, ey - 1, OUTLINE); put(ex + 1, ey - 1, OUTLINE); put(ex, ey, OUTLINE); put(ex - 1, ey + 1, OUTLINE); put(ex + 1, ey + 1, OUTLINE); }
+  };
+
+  for (const p of parts) drawPart(p, true);
+  for (const p of parts) drawPart(p, false);
+
+  // Fish: a pale stripe and an eye.
+  if (sp.head === 'fish') {
+    const m = sp.idx.mid;
+    let bx = c.px[h] - c.px[m], by = c.py[h] - c.py[m];
+    const bl = Math.hypot(bx, by) || 1; bx /= bl; by /= bl;
+    const sx = X(c.px[m] + bx * 0.35), sy = Y(c.py[m] + by * 0.35);
+    line(sx - by * S * 0.75, sy - bx * S * 0.75, sx + by * S * 0.75, sy + bx * S * 0.75, 0.6, pal.stripe, m, false);
+    const ex = Math.floor(hx + bx * S * 0.3 - by * S * 0.2 * facing), ey = Math.floor(hy - by * S * 0.3 - bx * S * 0.2 * facing);
+    if (c.alive) { put(ex, ey, pal.eye); put(ex + 1, ey, WHITE); }
+    else { put(ex - 1, ey - 1, OUTLINE); put(ex + 1, ey + 1, OUTLINE); put(ex, ey, OUTLINE); put(ex + 1, ey - 1, OUTLINE); put(ex - 1, ey + 1, OUTLINE); }
+  }
+
+  if (!o.marks || !c.alive) return;
+  const top = Y(c.py[h]) - HR - S * 0.9;
+  const cx = Math.floor(X(c.px[h]));
+  // "!" when scared or grabbed.
+  if (c.mood === 'flee' || c.mood === 'panic' || c.grab) {
+    const bx = cx, by = Math.floor(top - S * 1.6);
+    for (let yy = -1; yy <= 6; yy++) for (let xx = -1; xx <= 1; xx++) put(bx + xx, by + yy, OUTLINE);
+    for (let yy = 0; yy < 4; yy++) put(bx, by + yy, BANG);
+    put(bx, by + 5, BANG);
+  }
+  // Health bar after being hurt.
+  if (c.hurtT > 0 && c.hp < sp.hp) {
+    const wbar = Math.max(8, Math.round(S * 3.2)), by = Math.floor(top);
+    const f = Math.max(0, c.hp / sp.hp), fill = Math.round(wbar * f);
+    const col = BAR[f < 0.3 ? 0 : f < 0.6 ? 1 : 2];
+    for (let xx = -1; xx <= wbar; xx++) for (let yy = -1; yy <= 2; yy++) put(cx - (wbar >> 1) + xx, by + yy, OUTLINE);
+    for (let xx = 0; xx < wbar; xx++) for (let yy = 0; yy < 2; yy++) put(cx - (wbar >> 1) + xx, by + yy, xx < fill ? col : BAR_BG);
+  }
+  // Bubbles while holding its breath under water.
+  if (o.underwater && o.underwater(c)) {
+    for (let j = 0; j < 2; j++) {
+      const t = (tick * 0.6 + j * 9 + c.id * 5) % 16;
+      const bx = Math.floor(hx + fwx * HR + Math.sin(t * 0.8 + j) * 2), by = Math.floor(hy - HR - t);
+      put(bx, by, BUBBLE);
+    }
+  }
+}

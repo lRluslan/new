@@ -14,7 +14,7 @@ const T = {
   seed: 8, water: 9, oil: 10, acid: 11, lava: 12, smoke: 14, fire: 15,
   woodSide: 16, woodTop: 17, leaves: 18, ice: 19, glass: 20, obsidian: 21, metal: 22,
   salt: 13, brine: 23, mud: 24, brick: 25, coal: 26,
-  thermite: 27, molten: 28, rust: 29, mercury: 30, honey: 31, fuse: 32, cloner: 33, drain: 34,
+  thermite: 27, molten: 28, rust: 29, mercury: 30, honey: 31, fuse: 32, cloner: 33, drain: 34, blood: 35,
 };
 
 const BY_ELEMENT = {
@@ -26,6 +26,7 @@ const BY_ELEMENT = {
   [El.MUD]: T.mud, [El.BRICK]: T.brick, [El.COAL]: T.coal,
   [El.THERMITE]: T.thermite, [El.MOLTEN]: T.molten, [El.RUST]: T.rust, [El.MERCURY]: T.mercury,
   [El.HONEY]: T.honey, [El.FUSE]: T.fuse, [El.CLONER]: T.cloner, [El.DRAIN]: T.drain,
+  [El.BLOOD]: T.blood,
 };
 
 // face: 0 left, 1 right, 2 bottom, 3 top, 4 back, 5 front.
@@ -221,6 +222,7 @@ export function buildAtlas() {
     [T.fuse]: P.fuse(c3(El.FUSE)),
     [T.cloner]: P.machine(c3(El.CLONER)),
     [T.drain]: P.machine(c3(El.DRAIN)),
+    [T.blood]: P.water(c3(El.BLOOD)),
   };
   for (const [tileStr, fn] of Object.entries(fns)) {
     const tile = +tileStr;

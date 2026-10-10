@@ -26,8 +26,45 @@ Because the 2D view is a slice of a 3D world, things can move out of the slice.
 Water poured on flat ground spreads out in depth too, so it gets thinner in
 the side view, just as it really would.
 
-There are 33 reactions to discover, such as obsidian, boiling, glassmaking, brickmaking, charcoal,
-thermite, casting, rust, lightning and explosions. The **Discoveries** button in the top right keeps track of them.
+There are 39 reactions to discover, such as obsidian, boiling, glassmaking, brickmaking, charcoal,
+thermite, casting, rust, lightning, explosions, drowning and zombie infection. The **Discoveries** button in the top right keeps track of them.
+
+### Creatures
+
+The **Creatures** group in the palette has five kinds of little ragdoll creatures:
+
+| | |
+|---|---|
+| **Human** | Walks about, runs from fire and zombies, swims until tired. Needs air. |
+| **Zombie** | Shambles after people. A bite turns a person into a zombie a few seconds later. Does not breathe, so it walks along the bottom of ponds. Burns easily. |
+| **Robot** | Heavy and tough. Fire hardly bothers it, but it sinks in water, leaks oil when hurt, and acid eats it fast. |
+| **Chicken** | Scurries away from everyone. Light enough to float, and flaps its wings so falls do not hurt it. |
+| **Fish** | Swims in water. On land it flops about and soon suffocates. |
+
+Pick one and click to drop it in. With a creature or the **Grab** tool (`G`) selected, click and drag a creature to pick
+it up. Let go to drop it, or flick the mouse to throw it. The **Eraser** (or right mouse) removes creatures.
+
+They follow the same physics as everything else. Their bodies are made of joined parts (head, body, arms, legs) that
+fall, tumble and collide. Sand piles up on them and can bury them, and water flows around them. They float or sink by
+their real density: people barely sink in fresh water but float in salt water, robots sink, chickens bob on top.
+
+What hurts them:
+- **Falls and throws:** landing hard hurts. A fall of about 4 m (25 cells) badly hurts a person, about 7 m (40 cells) nearly kills them, and higher is deadly. Being thrown into a wall hurts the same way.
+- **Fire** sets them alight. They panic and run, spreading the flames, until water puts them out. Burnt bodies crumble to ash.
+- **Lava** kills in about a second.
+- **Acid** eats at them slowly.
+- **Water:** air breathers hold their breath for about 8 seconds, then drown. Swimmers tire after about 12 seconds.
+- **Weight:** a heavy pile of sand, stone or metal on top crushes them, and so does being trapped inside a solid block.
+- **Explosions and lightning.**
+
+Hover over a creature to see its health. A small health bar appears over it after it gets hurt, and a "!" when it is scared.
+
+The **Blood** button at the bottom turns blood and damage effects on or off. With it on, hurt creatures bleed real
+blood (a liquid that flows and boils away like water), show wounds, and can lose limbs in big blasts or impacts. With it
+off, they just flash when hurt.
+
+Creatures dropped in the 2D view stay on that slice so you can keep watching them. Creatures dropped in 3D wander
+anywhere, and only show in the 2D view while they are near the slice.
 
 ---
 
@@ -115,6 +152,7 @@ GitHub Pages is free for public projects. For a private project it needs a paid 
 | Zoom | Scroll wheel or pinch (zooms toward the mouse), `+` and `−` keys | Scroll wheel or pinch, `+` and `−` keys |
 | Move around | Middle-drag, or drag with two fingers | Middle-drag |
 | Brush size | Shift + scroll, or the `[` and `]` keys | `[` and `]` keys |
+| Creatures | Pick one and click to drop it in. Drag one to carry or throw it | The same, in the orbit view and in fly mode (aim with the crosshair) |
 | Touch | Drag a finger to paint | One finger paints, two fingers turn and zoom |
 
 **Fly mode (3D, like creative mode in block games).** Press **Tab** (or the
@@ -132,7 +170,7 @@ GitHub Pages is free for public projects. For a private project it needs a paid 
 If the page is not allowed to capture the mouse (some embedded pages), drag with the left mouse button to look around instead, and click without dragging to place.
 
 Everywhere:
-- `1` to `0` pick elements. `E` is the eraser, `H` heat, `J` cool.
+- `1` to `0` pick elements. `E` is the eraser, `H` heat, `J` cool, `G` grab.
 - `Space` pauses, `.` moves one step forward.
 - `R` resets the world and `C` clears it (in either view, since there is one world).
 - `T` turns on the thermal camera (2D).
@@ -148,6 +186,9 @@ Things to try:
 - Pour water onto bare soil to make mud, drop a seed in it, or bake the mud into brick.
 - Bury some wood under stone and heat it: with no air it turns into coal.
 - Fill a hollow with lava and watch it set into stone from the bottom up.
+- Drop a zombie next to a few people and watch the infection spread. Then set the zombies on fire.
+- Throw a person into the pond, then into a pool of salt water.
+- Bury someone in sand, or put a chicken on a pile of gunpowder and light it.
 
 **About lava:** lava is about 1150 °C, just below the melting point of rock,
 so it cannot melt through stone. Like real lava it is a poor conductor of
@@ -242,6 +283,8 @@ catches fire. Many times a second, every cell:
 | `styles.css` | The dark interface styling. |
 | `src/elements.js` | Every element and its real-world numbers, plus the discoveries list. Change numbers here to change how things behave. |
 | `src/world.js` | The physics engine: the one world both views show. |
+| `src/creatures.js` | The creatures: their ragdoll bodies, muscles, behaviour and everything that can hurt them. |
+| `src/creatureArt.js` | Draws the creatures as pixel art for the 2D view and the palette. |
 | `src/scenes.js` | The world size and the starting scene (autumn pond, dock and trees). |
 | `src/render2d.js` | Draws one slice of the world as 2D pixel art. |
 | `src/render3d.js` | Draws the whole world as 3D voxels with three.js, plus the forest around it. |
