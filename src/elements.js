@@ -5,7 +5,7 @@
 export const EMPTY = 0, STONE = 1, DIRT = 2, SAND = 3, SNOW = 4, ASH = 5,
   GUNPOWDER = 6, SEED = 7, WATER = 8, OIL = 9, ACID = 10, LAVA = 11,
   SMOKE = 12, FIRE = 13, WOOD = 14, PLANT = 15, ICE = 16,
-  GLASS = 17, OBSIDIAN = 18, METAL = 19;
+  GLASS = 17, OBSIDIAN = 18, METAL = 19, SALT = 20, BRINE = 21, MUD = 22, BRICK = 23, COAL = 24;
 
 export const SOLID = 1, POWDER = 2, LIQUID = 3, GAS = 4;
 
@@ -17,6 +17,7 @@ export const DISC = {
   MELT: 0, FREEZE: 1, BOIL: 2, OBSIDIAN: 4, CRUST: 5, ROCK_MELT: 6,
   GLASS: 7, BURN_WOOD: 8, OIL_FIRE: 9, WILDFIRE: 10, GROW: 11, SPROUT: 12,
   ACID: 13, EXPLODE: 14, THAW: 15, EXTINGUISH: 16, FLOAT: 17, SINK: 18, GLOW: 19,
+  DISSOLVE: 20, DEICE: 21, SALT_CRYSTALS: 22, MUD: 23, BRICK: 24, CHARCOAL: 25, BRINE_SINKS: 26,
 };
 
 export const DISCOVERIES = [
@@ -28,18 +29,18 @@ export const DISCOVERIES = [
     text: 'Water boils at 100 °C and evaporates. Turning into vapour soaks up a lot of heat.' },
   { id: DISC.OBSIDIAN, title: 'Obsidian', recipe: 'Lava + water', hint: 'Pour water on something very hot.',
     text: 'Water cools lava so fast that crystals cannot form. It hardens into dark volcanic glass.' },
-  { id: DISC.CRUST, title: 'Lava crust', recipe: 'Lava cools in air', hint: 'Leave some lava alone for a while.',
-    text: 'Lava slowly loses heat to the air and hardens into stone below 700 °C.' },
-  { id: DISC.ROCK_MELT, title: 'Molten rock', recipe: 'Stone + 1150 °C', hint: 'Stone is not as solid as it looks.',
-    text: 'Most rock melts at around 1150 °C and flows again as lava.' },
+  { id: DISC.CRUST, title: 'Lava rock', recipe: 'Lava cools down', hint: 'Leave some lava alone for a while.',
+    text: 'Lava hardens below 700 °C, starting where it rests on cold ground and building up layer by layer.' },
+  { id: DISC.ROCK_MELT, title: 'Molten rock', recipe: 'Stone + 1200 °C', hint: 'Stone is not as solid as it looks.',
+    text: 'Rock melts above about 1200 °C, hotter than lava itself, and flows again as lava.' },
   { id: DISC.GLASS, title: 'Glassmaking', recipe: 'Sand + 950 °C', hint: 'Sand next to something glowing hot.',
     text: 'Sand grains fuse together into glass when they get hot enough.' },
-  { id: DISC.BURN_WOOD, title: 'Combustion', recipe: 'Wood + 300 °C', hint: 'Wood and a spark.',
-    text: 'Wood ignites near 300 °C and burns down to ash. Fire needs air: a sealed fire goes out.' },
+  { id: DISC.BURN_WOOD, title: 'Combustion', recipe: 'Wood + 350 °C', hint: 'Wood and a spark.',
+    text: 'Wood ignites near 350 °C and burns down to ash. Fire needs air: a sealed fire goes out.' },
   { id: DISC.OIL_FIRE, title: 'Oil fire', recipe: 'Oil + 220 °C', hint: 'Oil burns. Can water stop it?',
     text: 'Oil ignites at about 220 °C. Water sinks under burning oil, so it cannot put the fire out.' },
   { id: DISC.WILDFIRE, title: 'Wildfire', recipe: 'Plants + fire', hint: 'Plants are full of fuel.',
-    text: 'Leaves catch fire at a lower temperature than wood and burn fast.' },
+    text: 'Leaves are full of water, but once they pass about 260 °C they burn fast.' },
   { id: DISC.GROW, title: 'Growth', recipe: 'Plant + water', hint: 'Give a plant something to drink.',
     text: 'Fresh plants drink the water next to them and grow into it.' },
   { id: DISC.SPROUT, title: 'Sprouting', recipe: 'Seed + soil', hint: 'Seeds need soil, and water helps.',
@@ -58,6 +59,20 @@ export const DISCOVERIES = [
     text: 'Sand (1600 kg/m³) is denser than water, so it sinks and settles on the bottom.' },
   { id: DISC.GLOW, title: 'Incandescence', recipe: 'Anything + 525 °C', hint: 'Get something really hot.',
     text: 'Above about 525 °C (the Draper point) hot matter starts to glow red, then orange and yellow.' },
+  { id: DISC.DISSOLVE, title: 'Dissolving', recipe: 'Salt + water', hint: 'Some powders vanish in water.',
+    text: 'Salt dissolves in water and makes salt water, which is a little heavier than fresh water.' },
+  { id: DISC.DEICE, title: 'De-icing', recipe: 'Salt + ice', hint: 'Why do people salt icy roads?',
+    text: 'Salt lowers the freezing point of water, so ice and snow it touches melt even below 0 °C.' },
+  { id: DISC.SALT_CRYSTALS, title: 'Salt crystals', recipe: 'Salt water + 100 °C', hint: 'Boil the sea.',
+    text: 'When salt water boils away, the water leaves but the salt stays behind as crystals.' },
+  { id: DISC.MUD, title: 'Mud', recipe: 'Water poured on soil', hint: 'Pour water onto bare soil.',
+    text: 'Soil soaks up water and turns into heavy, sticky mud. Seeds love it.' },
+  { id: DISC.BRICK, title: 'Brickmaking', recipe: 'Mud + 600 °C', hint: 'Bake some mud.',
+    text: 'Fired mud hardens into brick, one of the oldest building materials there is.' },
+  { id: DISC.CHARCOAL, title: 'Charcoal', recipe: 'Wood + heat, no air', hint: 'Heat wood that cannot breathe.',
+    text: 'Wood heated without air cannot burn, so it chars into coal instead. Coal burns long and hot.' },
+  { id: DISC.BRINE_SINKS, title: 'Salt layer', recipe: 'Salt water + water', hint: 'Pour salt water into fresh water.',
+    text: 'Salt water (1030 kg/m³) is denser than fresh water, so it sinks and forms a layer at the bottom.' },
 ];
 
 // Look up a discovery by its id (ids stay stable even if one is retired).
@@ -76,8 +91,8 @@ function def(id, d) { DEFS[id] = d; }
 def(EMPTY, { name: 'Air', state: 0, density: 1.2, k: 0.008, c: 0.25 });
 
 def(STONE, { name: 'Stone', cat: 'solid', state: SOLID, density: 2600, k: 0.12, c: 0.8,
-  hot: [1150, LAVA, DISC.ROCK_MELT], hard: 0.25,
-  desc: 'Heavy rock. Melts into lava around 1150 °C.',
+  hot: [1200, LAVA, DISC.ROCK_MELT], hard: 0.25,
+  desc: 'Heavy rock. Melts into lava above 1200 °C.',
   c2: ['#8e8a76', '#7d7a69', '#9c9884', '#6f6c5e'], c3: ['#566c70', '#4a5f63', '#62797c', '#3f5255'] });
 
 def(DIRT, { name: 'Soil', cat: 'powder', state: POWDER, density: 1500, k: 0.06, c: 0.8, slide: 0.18, hard: 0.6,
@@ -122,9 +137,11 @@ def(ACID, { name: 'Acid', cat: 'liquid', state: LIQUID, density: 1200, k: 0.12, 
   desc: 'Dissolves almost everything it touches, except glass.',
   c2: ['#a4e23c', '#92d32f', '#b8ef5c', '#80c228'], c3: ['#9be33a', '#88d12e', '#adf05a', '#74bd26'], group3: 1, a3: 0.8 });
 
-def(LAVA, { name: 'Lava', cat: 'liquid', state: LIQUID, density: 2700, k: 0.16, c: 1.0, flow: 2, visc: 0.3, temp: 1250,
-  cold: [700, STONE, DISC.CRUST], hard: 0, glow: true,
-  desc: 'Molten rock at about 1250 °C. Sets things on fire and hardens as it cools.',
+// Real lava is a poor conductor of heat and hardens slowly: it has to give up
+// a lot of latent heat, and it sets from the cool ground upward.
+def(LAVA, { name: 'Lava', cat: 'liquid', state: LIQUID, density: 2700, k: 0.02, c: 1.0, flow: 2, visc: 0.22, temp: 1150,
+  cold: [700, STONE, DISC.CRUST], latent: [0, 1100], hard: 0, glow: true,
+  desc: 'Molten rock at about 1150 °C. Hardens slowly, from the bottom up, into stone.',
   c2: ['#ff7a1a', '#ff9a2e', '#e8561b', '#ffc04a'], c3: ['#ff7a1a', '#ff9a2e', '#e8561b', '#ffc04a'], group3: 2 });
 
 def(SMOKE, { name: 'Smoke', cat: 'gas', state: GAS, density: 1.0, k: 0.03, c: 0.3, life: [90, 220], rise: 0.5, hard: 0,
@@ -136,12 +153,12 @@ def(FIRE, { name: 'Fire', cat: 'gas', state: GAS, density: 0.4, k: 0.2, c: 0.05,
   desc: 'Burning gas at about 1000 °C. Spreads to anything that can burn.',
   c2: ['#ffd04a', '#ff8a1f', '#fff2b0', '#e04a17'], c3: ['#ffd04a', '#ff8a1f', '#fff2b0', '#e04a17'], group3: 2 });
 
-def(WOOD, { name: 'Wood', cat: 'solid', state: SOLID, density: 700, k: 0.04, c: 0.9, ignite: 300, burn: [150, 750, 0.55],
+def(WOOD, { name: 'Wood', cat: 'solid', state: SOLID, density: 700, k: 0.04, c: 0.9, ignite: 350, burn: [150, 750, 0.55],
   hard: 0.5,
-  desc: 'Solid fuel. Catches fire near 300 °C and burns to ash.',
+  desc: 'Solid fuel. Catches fire near 350 °C and burns to ash. Heated without air, it turns to charcoal.',
   c2: ['#7a4a2c', '#6b3f25', '#8a5733', '#5e3820'], c3: ['#7a5230', '#8f6438', '#664428', '#a3733f'] });
 
-def(PLANT, { name: 'Plant', cat: 'life', state: SOLID, density: 600, k: 0.06, c: 1.0, ignite: 160, burn: [22, 650, 0.25],
+def(PLANT, { name: 'Plant', cat: 'life', state: SOLID, density: 600, k: 0.06, c: 1.0, ignite: 260, burn: [22, 650, 0.25],
   hard: 1,
   desc: 'Leaves that drink water and grow. Very flammable.',
   c2: ['#3e5f2c', '#567a32', '#2f4a26', '#6d8a34'], c3: ['#1c5f48', '#247255', '#154c3a', '#348563'] });
@@ -156,13 +173,36 @@ def(GLASS, { name: 'Glass', cat: 'solid', state: SOLID, density: 2500, k: 0.08, 
   c2: ['#dff2ee', '#cfe9e4', '#eef9f6', '#bfe0da'], c3: ['#d4f2ec', '#c4e9e2', '#e6f8f5', '#b3ddd5'], group3: 1, a3: 0.32 });
 
 def(OBSIDIAN, { name: 'Obsidian', cat: 'powder', state: POWDER, density: 2400, k: 0.1, c: 0.8, slide: 0.08, acidProof: true,
-  hot: [1150, LAVA, DISC.ROCK_MELT],
+  hot: [1200, LAVA, DISC.ROCK_MELT],
   desc: 'Chunks of volcanic glass made when water cools lava fast. Sinks, and resists acid.',
   c2: ['#2a2238', '#352b45', '#1f1a2b', '#43375a'], c3: ['#241d33', '#2e2540', '#1a1526', '#3a2f51'] });
 
 def(METAL, { name: 'Metal', cat: 'solid', state: SOLID, density: 7800, k: 0.3, c: 0.5, hard: 0.08,
   desc: 'Conducts heat far better than anything else.',
   c2: ['#9aa4ab', '#aeb7bd', '#858f97', '#c4ccd1'], c3: ['#8fa3a8', '#a2b5b9', '#7a8e93', '#b7c8cb'] });
+
+def(SALT, { name: 'Salt', cat: 'powder', state: POWDER, density: 2160, k: 0.08, c: 0.7, slide: 0.75, hard: 0.9,
+  desc: 'Crystals that dissolve in water and melt ice.',
+  c2: ['#f4f1ea', '#e7e2d6', '#fbfaf6', '#d9d3c5'], c3: ['#e3ebe9', '#d2dcda', '#f1f6f5', '#c2cecb'] });
+
+def(BRINE, { name: 'Salt water', cat: 'liquid', state: LIQUID, density: 1030, k: 0.14, c: 1.6, flow: 5, visc: 1, hard: 0,
+  hot: [100, SALT, DISC.SALT_CRYSTALS], cold: [-2, ICE, DISC.FREEZE], latent: [300, 60],
+  desc: 'Sea water. Sinks under fresh water, freezes at -2 °C and leaves salt when it boils.',
+  c2: ['#6aa69a', '#629d91', '#74afa2', '#5a9488'], c3: ['#3aa597', '#349b8e', '#43af9f', '#2e8f83'], group3: 1, a3: 0.74 });
+
+def(MUD, { name: 'Mud', cat: 'powder', state: POWDER, density: 1800, k: 0.1, c: 1.4, slide: 0.06, hard: 0.7,
+  hot: [600, BRICK, DISC.BRICK],
+  desc: 'Wet soil. Heavy and sticky. Seeds sprout fast in it. Bakes into brick at 600 °C.',
+  c2: ['#5a3f2b', '#4e3625', '#664832', '#45301f'], c3: ['#3f3024', '#4a382a', '#36291f', '#544030'] });
+
+def(BRICK, { name: 'Brick', cat: 'solid', state: SOLID, density: 1900, k: 0.07, c: 0.84, hard: 0.3,
+  desc: 'Fired mud. Strong, heat-proof building blocks.',
+  c2: ['#a8552f', '#934a29', '#b8653b', '#7e3f23'], c3: ['#94503a', '#83462f', '#a35c43', '#723c27'] });
+
+def(COAL, { name: 'Coal', cat: 'solid', state: SOLID, density: 1350, k: 0.05, c: 0.9, ignite: 420, burn: [700, 1100, 0.35],
+  hard: 0.6,
+  desc: 'Charcoal. Hard to light, but burns for a long time at about 1100 °C.',
+  c2: ['#2b2a2c', '#353336', '#232224', '#413e42'], c3: ['#262628', '#303032', '#1e1e20', '#3b3a3d'] });
 
 export const COUNT = DEFS.length;
 export const ELEMENTS = DEFS;
@@ -223,10 +263,10 @@ for (let t = 0; t < COUNT; t++) {
 
 // Order of the buttons in the element palette.
 export const PALETTE = [
-  { cat: 'Powders', items: [SAND, DIRT, SNOW, GUNPOWDER, ASH, OBSIDIAN] },
-  { cat: 'Liquids', items: [WATER, OIL, LAVA, ACID] },
+  { cat: 'Powders', items: [SAND, DIRT, SNOW, GUNPOWDER, ASH, OBSIDIAN, SALT, MUD] },
+  { cat: 'Liquids', items: [WATER, OIL, LAVA, ACID, BRINE] },
   { cat: 'Gases', items: [FIRE, SMOKE] },
-  { cat: 'Solids', items: [STONE, WOOD, ICE, METAL, GLASS] },
+  { cat: 'Solids', items: [STONE, WOOD, ICE, METAL, GLASS, BRICK, COAL] },
   { cat: 'Life', items: [PLANT, SEED] },
 ];
 

@@ -10,7 +10,7 @@
 
 import {
   EMPTY, STONE, DIRT, SAND, GUNPOWDER, SEED, WATER, OIL, ACID, LAVA, SMOKE,
-  FIRE, WOOD, PLANT, OBSIDIAN, ASH, COUNT, SOLID, POWDER, LIQUID, GAS, AMBIENT, FIRE_TEMP, DISC,
+  FIRE, WOOD, PLANT, OBSIDIAN, ASH, ICE, SNOW, SALT, BRINE, MUD, COAL, COUNT, SOLID, POWDER, LIQUID, GAS, AMBIENT, FIRE_TEMP, DISC,
   STATE, DENS, K, CAP, TEMP0, HOT_AT, HOT_TO, HOT_DISC, COLD_AT, COLD_TO, COLD_DISC, LATENT_HOT, LATENT_COLD,
   IGNITE, BURN_TIME, BURN_HEAT, ASH_CHANCE, SLIDE, FLOW, VISC, RISE, LIFE_MIN, LIFE_SPAN,
   HARD, GLOWS,
@@ -47,7 +47,7 @@ const WAKE_T = new Float32Array(COUNT);
 for (let t = 1; t < COUNT; t++) {
   BLOCKS[t] = STATE[t] === SOLID || STATE[t] === POWDER ? 1 : 0;
   BLOCKS_OR_LIQUID[t] = BLOCKS[t] || STATE[t] === LIQUID ? 1 : 0;
-  CAN_SLEEP[t] = BLOCKS[t] && t !== SEED ? 1 : 0;
+  CAN_SLEEP[t] = BLOCKS[t] && t !== SEED && t !== SALT ? 1 : 0; // seeds and salt keep reacting
   WAKE_T[t] = Math.min(IGNITE[t] || Infinity, GLOWS[t] ? Infinity : 525);
 }
 
@@ -362,10 +362,14 @@ export class World {
     } else if (IGNITE[t] && T >= IGNITE[t]) {
       // Gunpowder carries its own oxidiser. Everything else needs air to catch fire.
       if (t === GUNPOWDER) { this.explode(x, y, z); return; }
-      if (!this.hasAir(i, x, y, z)) return this.moveOnly(i, t, x, y, z);
+      if (!this.hasAir(i, x, y, z)) {
+        // Wood that is hot but cannot reach air chars into coal.
+        if (t === WOOD) { this.morph(i, COAL); this.discover(DISC.CHARCOAL); return; }
+        return this.moveOnly(i, t, x, y, z);
+      }
       this.flags[i] |= BURNING;
       this.life[i] = BURN_TIME[t] * (0.6 + Math.random() * 0.8);
-      this.discover(t === OIL ? DISC.OIL_FIRE : t === WOOD ? DISC.BURN_WOOD : DISC.WILDFIRE);
+      this.discover(t === OIL ? DISC.OIL_FIRE : t === WOOD || t === COAL ? DISC.BURN_WOOD : DISC.WILDFIRE);
     }
 
     const s = STATE[t];
@@ -373,6 +377,7 @@ export class World {
 
     switch (s) {
       case POWDER: {
+        if (t === SALT && this.salt(i, x, y, z)) return;
         const j = this.movePowder(i, t, x, y, z);
         if (t === SEED && j === i) this.sprout(i, x, y, z);
         break;
@@ -399,12 +404,20 @@ export class World {
 
   cool(i, t, x, y, z) {
     if (t === LAVA) {
-      if (Math.random() < 0.3) {
-        const quenched = this.hasNeighbor(i, x, y, z, WATER);
-        this.morph(i, quenched ? OBSIDIAN : STONE);
-        this.discover(quenched ? DISC.OBSIDIAN : DISC.CRUST);
+      // Water quenches lava straight into volcanic glass.
+      if (this.hasNeighbor(i, x, y, z, WATER)) {
+        this.morph(i, OBSIDIAN);
+        this.discover(DISC.OBSIDIAN);
         return true;
       }
+      // Otherwise lava only sets on top of something solid, so a pool turns
+      // to stone from the bottom up, one layer at a time. Until then it stays
+      // molten even where its surface has cooled.
+      if (y > 0 && !BLOCKS[this.type[i - this.L]]) return false;
+      const p = this.latent[i] - (COLD_AT[t] - this.temp[i]);
+      this.temp[i] = COLD_AT[t];
+      if (p <= -LATENT_COLD[t]) { this.morph(i, STONE); this.discover(DISC.CRUST); return true; }
+      this.latent[i] = p;
       return false;
     }
     const lat = LATENT_COLD[t];
@@ -518,6 +531,13 @@ export class World {
       if (k >= 0) return k;
     }
     const s = this.spread(i, t, x, y, z);
+    // Standing water slowly soaks into bare soil underneath, turning it to mud.
+    if (s === i && t === WATER && y > 0 && this.type[i - this.L] === DIRT && Math.random() < 0.1) {
+      this.morph(i - this.L, MUD);
+      this.set(i, EMPTY, this.temp[i]);
+      this.discover(DISC.MUD);
+      return i;
+    }
     if (s === i && t !== ACID && this.supported(i, t, x, y, z)) {
       this.flags[i] |= RESTING;
       this.restChunk[this.chunkOf[i]] = 1;
@@ -534,6 +554,7 @@ export class World {
     if (STATE[below] === LIQUID) {
       if (STATE[t] === POWDER) this.discover(DISC.SINK);
       else if (below === OIL && t === WATER) this.discover(DISC.FLOAT);
+      else if (below === WATER && t === BRINE) this.discover(DISC.BRINE_SINKS);
     }
     let v = this.vy[i] - GRAVITY;
     if (v < -MAX_SPEED) v = -MAX_SPEED;
@@ -546,6 +567,13 @@ export class World {
     while (n > 0 && cy > 0 && this.canEnter(t, ty[cur - L])) {
       this.swap(cur, cur - L);
       cur -= L; cy--; n--;
+    }
+    // Water landing on bare soil soaks in and turns it to mud.
+    if (n > 0 && cy > 0 && t === WATER && ty[cur - L] === DIRT && Math.random() < 0.6) {
+      this.morph(cur - L, MUD);
+      this.set(cur, EMPTY);
+      this.discover(DISC.MUD);
+      return cur;
     }
     // Hitting something stops the fall; liquids splash sideways a little.
     if (n > 0 || cy === 0) {
@@ -615,6 +643,13 @@ export class World {
       const go = drop ? Math.min(drop, steps) : (pressed && open ? 1 : 0);
       if (go) {
         const target = i + off * go;
+        // Water flowing over bare soil soaks into it.
+        if (t === WATER && y > 0 && type[target - L] === DIRT && Math.random() < 0.15) {
+          this.morph(target - L, MUD);
+          this.set(i, EMPTY, this.temp[i]);
+          this.discover(DISC.MUD);
+          return i;
+        }
         this.swap(i, target);
         fl[target] = (fl[target] & ~3) | dir;
         return target;
@@ -729,6 +764,26 @@ export class World {
     return false;
   }
 
+  // Salt dissolves into water, and melts ice and snow it touches.
+  salt(i, x, y, z) {
+    if (Math.random() > 0.2) return false;
+    const n = this.randomNeighbor(i, x, y, z);
+    if (n < 0) return false;
+    const o = this.type[n];
+    if (o === WATER) {
+      this.set(n, BRINE, this.temp[n]);
+      this.set(i, EMPTY, this.temp[i]);
+      this.discover(DISC.DISSOLVE);
+      return true;
+    }
+    if ((o === ICE || o === SNOW) && Math.random() < 0.3) {
+      this.morph(n, WATER);
+      this.temp[n] = Math.max(this.temp[n], 0);
+      this.discover(DISC.DEICE);
+    }
+    return false;
+  }
+
   growPlant(i, x, y, z) {
     if (this.life[i] <= 0 || Math.random() > 0.03) return;
     const n = this.randomNeighbor(i, x, y, z);
@@ -747,7 +802,8 @@ export class World {
     if (T < 4 || T > 45) return;
     const wet = this.hasNeighbor(i, x, y, z, WATER);
     let chance = 0;
-    if (below === DIRT) chance = wet ? 0.05 : 0.004;
+    if (below === MUD) chance = 0.05;
+    else if (below === DIRT) chance = wet ? 0.05 : 0.004;
     else if (below === SAND || below === PLANT) chance = wet ? 0.01 : 0;
     if (Math.random() >= chance) return;
     this.morph(i, WOOD);

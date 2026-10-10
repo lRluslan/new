@@ -562,6 +562,15 @@ export class Renderer3D {
     c.update();
   }
 
+  // Move the camera toward (factor > 1) or away from the point it circles.
+  zoom(factor) {
+    const c = this.controls, off = this.camera.position.clone().sub(c.target);
+    const len = Math.max(c.minDistance, Math.min(c.maxDistance, off.length() / factor));
+    this.camera.position.copy(c.target).add(off.setLength(len));
+    this.userMoved = true;
+    c.update();
+  }
+
   resetView() {
     this.userMoved = false;
     this.camera.position.copy(this.home.pos);

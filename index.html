@@ -89,9 +89,9 @@
 
     <div class="coach" id="coach">
       <b>Pick an element, then paint.</b>
-      <span class="hint-2d mouse">Left mouse paints. Right mouse erases. Scroll changes the brush size.</span>
+      <span class="hint-2d mouse">Left mouse paints. Right mouse erases. Scroll zooms, middle-drag pans.</span>
       <span class="hint-3d mouse">Left mouse paints. Right-drag turns the island, even from below. Scroll zooms to the mouse.</span>
-      <span class="hint-2d touch">Drag a finger to paint. Use the Eraser to remove things.</span>
+      <span class="hint-2d touch">Drag a finger to paint. Pinch with two fingers to zoom and move around.</span>
       <span class="hint-3d touch">Drag one finger to paint. Use two fingers to turn and zoom.</span>
     </div>
 
@@ -132,7 +132,7 @@
         <svg viewBox="0 0 16 16" aria-hidden="true"><ellipse cx="8" cy="8" rx="6" ry="2.6" fill="none" stroke="currentColor" stroke-width="1.4"/><circle cx="8" cy="8" r="1.6" fill="currentColor"/></svg>
         Orbit
       </button>
-      <button type="button" class="toggle only-3d" id="btn-view" title="Reset the camera">View</button>
+      <button type="button" class="toggle" id="btn-view" title="Reset zoom and camera">View</button>
       <div class="seg pixel only-3d" role="group" aria-label="Pixel size">
         <button type="button" data-pixel="1" aria-pressed="false" title="Sharp">1px</button>
         <button type="button" data-pixel="2" aria-pressed="true" title="Pixel art">2px</button>
@@ -162,7 +162,8 @@
           <ul class="keys">
             <li><kbd>Left mouse</kbd> paint</li>
             <li><kbd>Right mouse</kbd> erase</li>
-            <li><kbd>Scroll</kbd> brush size</li>
+            <li><kbd>Scroll</kbd> or pinch to zoom · <kbd>Middle-drag</kbd> pan</li>
+            <li><kbd>Shift</kbd> + <kbd>Scroll</kbd> brush size</li>
             <li><kbd>W</kbd> <kbd>S</kbd> move the slice</li>
             <li><kbd>T</kbd> thermal camera</li>
           </ul>
@@ -180,7 +181,7 @@
           <h3>Everywhere</h3>
           <ul class="keys">
             <li><kbd>1</kbd>–<kbd>0</kbd> elements · <kbd>E</kbd> <kbd>H</kbd> <kbd>J</kbd> tools</li>
-            <li><kbd>[</kbd> <kbd>]</kbd> brush size</li>
+            <li><kbd>[</kbd> <kbd>]</kbd> brush size · <kbd>+</kbd> <kbd>−</kbd> zoom</li>
             <li><kbd>Space</kbd> pause · <kbd>.</kbd> step</li>
             <li><kbd>M</kbd> switch 2D/3D · <kbd>R</kbd> reset · <kbd>C</kbd> clear</li>
           </ul>

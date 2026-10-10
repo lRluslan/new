@@ -621,7 +621,7 @@ kbd {
   .disc-chip .label { display: none; }
   .inspector, .thermal-legend { display: none; }
   .hud { bottom: 10px; flex-wrap: nowrap; }
-  .hud .seg, .hud .sep, #btn-view { display: none; }
+  .hud .seg, .hud .sep { display: none; }
   .hud { flex-wrap: wrap; }
   .brush input, .slice input { width: 70px; }
   .brush input { width: 90px; }

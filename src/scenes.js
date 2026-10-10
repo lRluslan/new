@@ -99,7 +99,7 @@ export function autumnGlade(w) {
     const h = ground[x + W * z];
     const soil = 12 + Math.round(2 * Math.sin(x * 0.05 + 2) + Math.cos(z * 0.2));
     const d = pondD(x, z);
-    const sandy = d < 1.18 ? (d > 0.85 ? 3 : 2) : 0;
+    const sandy = d < 1.18 || h <= level ? (d > 0.85 ? 3 : 2) : 0; // every pond bed is sand
     for (let y = 0; y < h; y++) w.set(w.index(x, y, z), y >= h - sandy ? SAND : y < h - soil ? STONE : DIRT);
     for (let y = h; y <= level; y++) w.set(w.index(x, y, z), WATER);
   }

@@ -211,7 +211,10 @@ $('#btn-orbit').addEventListener('click', () => {
   r3d.controls.autoRotate = !r3d.controls.autoRotate;
   $('#btn-orbit').setAttribute('aria-pressed', String(r3d.controls.autoRotate));
 });
-$('#btn-view').addEventListener('click', () => r3d && r3d.resetView());
+$('#btn-view').addEventListener('click', () => {
+  if (state.mode === '2d') r2d.resetZoom();
+  else if (r3d) r3d.resetView();
+});
 for (const b of document.querySelectorAll('[data-pixel]')) b.addEventListener('click', () => {
   const s = +b.dataset.pixel;
   for (const o of document.querySelectorAll('[data-pixel]')) o.setAttribute('aria-pressed', String(o === b));
@@ -333,16 +336,51 @@ function modeForButton(button) {
   return state.selected.kind === 'tool' ? state.selected.id : 'add';
 }
 
+// 2D: left paints, right erases, middle-drag pans. On touch, one finger
+// paints and two fingers pinch to zoom and drag to pan.
+const touches = new Map();
+let pinch = null, panFrom = null;
+const stagePoint = (x, y) => { const r = stage.getBoundingClientRect(); return [x - r.left, y - r.top]; };
+function pinchState() {
+  const [a, b] = [...touches.values()];
+  return { d: Math.hypot(a.x - b.x, a.y - b.y), mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2 };
+}
 r2d.canvas.addEventListener('contextmenu', e => e.preventDefault());
 r2d.canvas.addEventListener('pointerdown', e => {
-  if (e.button !== 0 && e.button !== 2) return;
-  r2d.canvas.setPointerCapture(e.pointerId);
-  state.painting = modeForButton(e.button);
+  try { r2d.canvas.setPointerCapture(e.pointerId); } catch { /* not every pointer can be captured */ }
   state.pointer = { x: e.clientX, y: e.clientY };
+  if (e.pointerType === 'touch') {
+    touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (touches.size === 2) { stopPaint(); pinch = pinchState(); return; }
+    if (touches.size > 2) return;
+  }
+  if (e.button === 1) { e.preventDefault(); panFrom = { x: e.clientX, y: e.clientY }; return; }
+  if (e.button !== 0 && e.button !== 2) return;
+  state.painting = modeForButton(e.button);
   state.lastCell = null;
   dismissCoach();
 });
-r2d.canvas.addEventListener('pointermove', e => { state.pointer = { x: e.clientX, y: e.clientY }; });
+r2d.canvas.addEventListener('pointermove', e => {
+  state.pointer = { x: e.clientX, y: e.clientY };
+  if (touches.has(e.pointerId)) touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (pinch && touches.size === 2) {
+    const now = pinchState();
+    const [sx, sy] = stagePoint(now.mx, now.my);
+    r2d.pan(now.mx - pinch.mx, now.my - pinch.my);
+    if (pinch.d > 0) r2d.zoomAt(sx, sy, now.d / pinch.d);
+    pinch = now;
+  } else if (panFrom) {
+    r2d.pan(e.clientX - panFrom.x, e.clientY - panFrom.y);
+    panFrom = { x: e.clientX, y: e.clientY };
+  }
+});
+const endPointer = e => {
+  touches.delete(e.pointerId);
+  if (touches.size < 2) pinch = null;
+  if (e.button === 1 || e.pointerType !== 'touch') panFrom = null;
+};
+r2d.canvas.addEventListener('pointerup', endPointer);
+r2d.canvas.addEventListener('pointercancel', endPointer);
 r2d.canvas.addEventListener('pointerleave', () => { if (!state.painting) state.pointer = null; });
 const stopPaint = () => { state.painting = null; state.lastCell = null; };
 window.addEventListener('pointerup', stopPaint);
@@ -414,6 +452,8 @@ window.addEventListener('keydown', e => {
   if (k === 'r') { resetScene(); return; }
   if (k === 'c') { clearScene(); return; }
   if (k === '?' || k === '/') { openPanel('help'); return; }
+  if (k === '+' || k === '=') { zoomBy(1.25); return; }
+  if (k === '-' || k === '_') { zoomBy(0.8); return; }
   if (k === 'w' || k === 's' || (state.mode === '2d' && (k === 'arrowup' || k === 'arrowdown'))) {
     e.preventDefault();
     setSlice(r2d.z + (k === 'w' || k === 'arrowup' ? -1 : 1));
@@ -431,12 +471,25 @@ window.addEventListener('keydown', e => {
     if (k === 'd' || k === 'arrowright') r3d.orbit(0.12);
   }
 });
+// Scroll zooms the 2D view toward the mouse (the 3D camera handles its own
+// scroll zoom). Shift + scroll changes the brush size instead.
 stage.addEventListener('wheel', e => {
   if (state.mode !== '2d') return;
   e.preventDefault();
-  state.brush['2d'] = Math.max(1, Math.min(BRUSH_MAX['2d'], state.brush['2d'] + (e.deltaY > 0 ? -1 : 1)));
-  syncBrush();
+  if (e.shiftKey) {
+    const d = (e.deltaY || e.deltaX) > 0 ? -1 : 1;
+    state.brush['2d'] = Math.max(1, Math.min(BRUSH_MAX['2d'], state.brush['2d'] + d));
+    syncBrush();
+    return;
+  }
+  const [sx, sy] = stagePoint(e.clientX, e.clientY);
+  r2d.zoomAt(sx, sy, Math.exp(-Math.max(-100, Math.min(100, e.deltaY)) * 0.0025));
 }, { passive: false });
+
+function zoomBy(factor) {
+  if (state.mode === '2d' || !r3d) { const r = stage.getBoundingClientRect(); r2d.zoomAt(r.width / 2, r.height / 2, factor); }
+  else r3d.zoom(factor);
+}
 
 // ----- coach mark -----
 const coach = $('#coach');

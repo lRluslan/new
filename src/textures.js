@@ -13,6 +13,7 @@ const T = {
   stone: 0, dirt: 1, grassTop: 2, grassSide: 3, sand: 4, snow: 5, ash: 6, gunpowder: 7,
   seed: 8, water: 9, oil: 10, acid: 11, lava: 12, smoke: 14, fire: 15,
   woodSide: 16, woodTop: 17, leaves: 18, ice: 19, glass: 20, obsidian: 21, metal: 22,
+  salt: 13, brine: 23, mud: 24, brick: 25, coal: 26,
 };
 
 const BY_ELEMENT = {
@@ -20,7 +21,8 @@ const BY_ELEMENT = {
   [El.GUNPOWDER]: T.gunpowder, [El.SEED]: T.seed, [El.WATER]: T.water, [El.OIL]: T.oil,
   [El.ACID]: T.acid, [El.LAVA]: T.lava, [El.SMOKE]: T.smoke, [El.FIRE]: T.fire,
   [El.WOOD]: T.woodSide, [El.PLANT]: T.leaves, [El.ICE]: T.ice, [El.GLASS]: T.glass,
-  [El.OBSIDIAN]: T.obsidian, [El.METAL]: T.metal,
+  [El.OBSIDIAN]: T.obsidian, [El.METAL]: T.metal, [El.SALT]: T.salt, [El.BRINE]: T.brine,
+  [El.MUD]: T.mud, [El.BRICK]: T.brick, [El.COAL]: T.coal,
 };
 
 // face: 0 left, 1 right, 2 bottom, 3 top, 4 back, 5 front.
@@ -134,6 +136,16 @@ function painter(rand) {
         return [255, 238, 160];
       };
     },
+    // Courses of bricks with pale mortar lines, every other row offset.
+    brick(pal) {
+      const p = pal.map(rgb);
+      const tone = Array.from({ length: 8 }, () => pick(p));
+      return (x, y) => {
+        const row = (y / 4) | 0, off = row & 1 ? 4 : 0;
+        if (y % 4 === 3 || (x + off) % 8 === 7) return [176, 160, 140];
+        return shadeC(tone[(row * 2 + (((x + off) / 8) | 0)) & 7], 0.92 + rand() * 0.14);
+      };
+    },
     sparkle(pal, accent, chance) {
       const p = pal.map(rgb), a = rgb(accent);
       return () => (rand() < chance ? a : pick(p));
@@ -177,6 +189,11 @@ export function buildAtlas() {
     [T.glass]: P.glass(c3(El.GLASS)),
     [T.obsidian]: P.sparkle(c3(El.OBSIDIAN), '#6b56a0', 0.05),
     [T.metal]: P.metal(c3(El.METAL)),
+    [T.salt]: P.sparkle(c3(El.SALT), '#ffffff', 0.18),
+    [T.brine]: P.water(c3(El.BRINE)),
+    [T.mud]: P.sparkle(c3(El.MUD), '#6b5642', 0.08),
+    [T.brick]: P.brick(c3(El.BRICK)),
+    [T.coal]: P.sparkle(c3(El.COAL), '#6d6a72', 0.07),
   };
   for (const [tileStr, fn] of Object.entries(fns)) {
     const tile = +tileStr;

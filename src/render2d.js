@@ -8,7 +8,7 @@ import { rng } from './scenes.js';
 
 const {
   EMPTY, STONE, DIRT, SAND, SNOW, WATER, OIL, ACID, LAVA, SMOKE, FIRE, WOOD, PLANT,
-  ICE, GLASS, SEED, STATE, GAS, GLOWS,
+  ICE, GLASS, SEED, SALT, BRINE, MUD, BRICK, COAL, STATE, GAS, GLOWS,
 } = El;
 
 const pack = (r, g, b) => ((255 << 24) | (b << 16) | (g << 8) | r) >>> 0;
@@ -34,6 +34,8 @@ const HOT_RED = packHex('#ff4a14'), HOT_YEL = packHex('#ffcf6a');
 const SMOKE_C = packHex('#3f3b35'), GLASS_C = packHex('#e8f6f2');
 const SAND_TOP = packHex('#fcf0c8'), STONE_TOP = packHex('#b9b399'), SNOW_TOP = packHex('#ffffff');
 const OIL_TOP = packHex('#7a5a35'), WOOD_TOP = packHex('#a8743f'), ICE_TOP = packHex('#f2fdfd');
+const BRINE_TINT = packHex('#9fb3a8'), MUD_TOP = packHex('#7a5c40'), SALT_TOP = packHex('#ffffff');
+const MORTAR = packHex('#c9b79c'), COAL_GLINT = packHex('#7a7680');
 const LEAF_COLORS = ['#e08a2c', '#d9a531', '#c4562a', '#f0c24a', '#b5462a'].map(packHex);
 
 // Thermal camera colours from -50 °C to 2500 °C.
@@ -198,13 +200,48 @@ export class Renderer2D {
   }
 
   resize(w, h) {
+    this.view = { w, h };
+    if (!this.cam) this.cam = { zoom: 1, u: this.world.W / 2, v: this.world.H / 2 }; // u, v: view centre in cells
+    this.layout();
+  }
+
+  // Place the canvas for the current zoom. At zoom 1 the whole slice fits;
+  // zoomed in, the view never slides past the edge of the world.
+  layout() {
     const { W, H } = this.world;
-    const s = Math.min(w / W, h / H);
-    const cw = Math.round(W * s), ch = Math.round(H * s);
+    const { w, h } = this.view, cam = this.cam;
+    const s = Math.min(w / W, h / H) * cam.zoom;
+    const cw = W * s, ch = H * s;
+    let left = w / 2 - cam.u * s, top = h / 2 - cam.v * s;
+    left = cw <= w ? (w - cw) / 2 : Math.min(0, Math.max(w - cw, left));
+    top = ch <= h ? (h - ch) / 2 : Math.min(0, Math.max(h - ch, top));
+    cam.u = (w / 2 - left) / s; cam.v = (h / 2 - top) / s;
+    this.scale = s;
     for (const c of [this.canvas, this.glowCanvas]) {
-      c.style.width = cw + 'px'; c.style.height = ch + 'px';
-      c.style.left = Math.round((w - cw) / 2) + 'px'; c.style.top = Math.round((h - ch) / 2) + 'px';
+      c.style.width = Math.round(cw) + 'px'; c.style.height = Math.round(ch) + 'px';
+      c.style.left = Math.round(left) + 'px'; c.style.top = Math.round(top) + 'px';
     }
+  }
+
+  // Zoom by `factor`, keeping the point under (sx, sy) (stage pixels) still.
+  zoomAt(sx, sy, factor) {
+    const cam = this.cam, s = this.scale;
+    const { w, h } = this.view;
+    const pu = cam.u + (sx - w / 2) / s, pv = cam.v + (sy - h / 2) / s;
+    cam.zoom = Math.max(1, Math.min(8, cam.zoom * factor));
+    const s2 = Math.min(w / this.world.W, h / this.world.H) * cam.zoom;
+    cam.u = pu - (sx - w / 2) / s2; cam.v = pv - (sy - h / 2) / s2;
+    this.layout();
+  }
+
+  pan(dx, dy) {
+    this.cam.u -= dx / this.scale; this.cam.v -= dy / this.scale;
+    this.layout();
+  }
+
+  resetZoom() {
+    this.cam = { zoom: 1, u: this.world.W / 2, v: this.world.H / 2 };
+    this.layout();
   }
 
   toCell(clientX, clientY) {
@@ -329,6 +366,21 @@ export class Renderer2D {
           case SMOKE: c = blend(buf[p], SMOKE_C, 0.55 + (sh & 3) * 0.06); break;
           case GLASS: c = blend(buf[p], GLASS_C, 0.4); if (exposed && run === 0) c = GLASS_C; break;
           case ACID: if (run === 0) c = PAL[ACID][2]; break;
+          case BRINE: {
+            c = blend(WATER_D[Math.min(7, run < 2 ? run : 2 + ((run - 2) >> 1))], BRINE_TINT, 0.22);
+            if (run === 0 && !exposed) c = blend(WATER_D[2], BRINE_TINT, 0.22);
+            break;
+          }
+          case BRICK: {
+            // Courses of bricks: 3 rows tall, 6 wide, every other course offset.
+            const course = (y / 3) | 0, off = course & 1 ? 3 : 0;
+            c = (y % 3 === 0 || (x + off) % 6 === 0) ? MORTAR : PAL[BRICK][((((x + off) / 6) | 0) + course) & 3];
+            if (exposed && run === 0) c = scale(c, 1.15);
+            break;
+          }
+          case COAL: if ((sh & 31) === 0) c = COAL_GLINT; break;
+          case MUD: if (exposed && run === 0) c = MUD_TOP; break;
+          case SALT: if (exposed && run === 0) c = SALT_TOP; break;
         }
         // Hot things glow: red at ~525 °C, orange and yellow beyond.
         const T = temp[i];

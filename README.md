@@ -26,7 +26,7 @@ Because the 2D view is a slice of a 3D world, things can move out of the slice.
 Water poured on flat ground spreads out in depth too, so it gets thinner in
 the side view, just as it really would.
 
-There are 19 reactions to discover, such as obsidian, boiling, glassmaking and
+There are 26 reactions to discover, such as obsidian, boiling, glassmaking, brickmaking, charcoal and
 explosions. The **Discoveries** button in the top right keeps track of them.
 
 ---
@@ -112,7 +112,9 @@ GitHub Pages is free for public projects. For a private project it needs a paid 
 | Erase | Right mouse, or the Eraser tool | Eraser tool |
 | Slice | Slice slider, `W` and `S` (or arrow up and down) | `W` and `S` (the slice flashes in yellow) |
 | Camera | | Right-drag turns all the way around (even underneath), scroll zooms toward the mouse, middle-drag moves, A and D keys orbit |
-| Brush size | Scroll wheel, or the `[` and `]` keys | `[` and `]` keys |
+| Zoom | Scroll wheel or pinch (zooms toward the mouse), `+` and `−` keys | Scroll wheel or pinch, `+` and `−` keys |
+| Move around | Middle-drag, or drag with two fingers | Middle-drag |
+| Brush size | Shift + scroll, or the `[` and `]` keys | `[` and `]` keys |
 | Touch | Drag a finger to paint | One finger paints, two fingers turn and zoom |
 
 Everywhere:
@@ -128,6 +130,19 @@ Things to try:
 - Use the Heat tool on the tree, or on a pile of sand.
 - Pour oil on water, then set it on fire.
 - Make a gunpowder pile and touch it with fire.
+- Sprinkle salt into the pond, or onto ice. Then boil some salt water with the Heat tool.
+- Pour water onto bare soil to make mud, drop a seed in it, or bake the mud into brick.
+- Bury some wood under stone and heat it: with no air it turns into coal.
+- Fill a hollow with lava and watch it set into stone from the bottom up.
+
+**About lava:** lava is about 1150 °C, just below the melting point of rock,
+so it cannot melt through stone. Like real lava it is a poor conductor of
+heat, so a small flow scorches wood without always setting it alight. It has
+to give up a lot of heat before it sets, and it only sets where it rests on
+something solid, so a pool hardens layer by layer from the bottom up and
+stays molten on top for minutes.
+
+**New materials:** Salt, Mud, Salt water, Brick and Coal.
 - Turn on the thermal camera to watch hot air rise.
 
 ---
