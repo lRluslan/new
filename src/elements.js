@@ -4,8 +4,8 @@
 
 export const EMPTY = 0, STONE = 1, DIRT = 2, SAND = 3, SNOW = 4, ASH = 5,
   GUNPOWDER = 6, SEED = 7, WATER = 8, OIL = 9, ACID = 10, LAVA = 11,
-  STEAM = 12, SMOKE = 13, FIRE = 14, WOOD = 15, PLANT = 16, ICE = 17,
-  GLASS = 18, OBSIDIAN = 19, METAL = 20;
+  SMOKE = 12, FIRE = 13, WOOD = 14, PLANT = 15, ICE = 16,
+  GLASS = 17, OBSIDIAN = 18, METAL = 19;
 
 export const SOLID = 1, POWDER = 2, LIQUID = 3, GAS = 4;
 
@@ -14,7 +14,7 @@ export const FIRE_TEMP = 1000; // a wood fire burns at roughly 600–1100 °C
 
 // Discoveries: reactions the player can find.
 export const DISC = {
-  MELT: 0, FREEZE: 1, BOIL: 2, RAIN: 3, OBSIDIAN: 4, CRUST: 5, ROCK_MELT: 6,
+  MELT: 0, FREEZE: 1, BOIL: 2, OBSIDIAN: 4, CRUST: 5, ROCK_MELT: 6,
   GLASS: 7, BURN_WOOD: 8, OIL_FIRE: 9, WILDFIRE: 10, GROW: 11, SPROUT: 12,
   ACID: 13, EXPLODE: 14, THAW: 15, EXTINGUISH: 16, FLOAT: 17, SINK: 18, GLOW: 19,
 };
@@ -25,9 +25,7 @@ export const DISCOVERIES = [
   { id: DISC.FREEZE, title: 'Freezing', recipe: 'Water + cold', hint: 'Try making water very cold.',
     text: 'Water freezes below 0 °C. Ice pulls heat out of the water next to it, so freezing spreads.' },
   { id: DISC.BOIL, title: 'Boiling', recipe: 'Water + heat', hint: 'Heat some water.',
-    text: 'Water boils at 100 °C and turns into steam, which is much lighter than air.' },
-  { id: DISC.RAIN, title: 'Rain', recipe: 'Steam cools down', hint: 'Watch where steam goes.',
-    text: 'Steam rises, cools below 100 °C and condenses back into falling drops.' },
+    text: 'Water boils at 100 °C and evaporates. Turning into vapour soaks up a lot of heat.' },
   { id: DISC.OBSIDIAN, title: 'Obsidian', recipe: 'Lava + water', hint: 'Pour water on something very hot.',
     text: 'Water cools lava so fast that crystals cannot form. It hardens into dark volcanic glass.' },
   { id: DISC.CRUST, title: 'Lava crust', recipe: 'Lava cools in air', hint: 'Leave some lava alone for a while.',
@@ -53,7 +51,7 @@ export const DISCOVERIES = [
   { id: DISC.THAW, title: 'Thaw', recipe: 'Snow + warmth', hint: 'Snow does not last forever.',
     text: 'Snow is loose ice crystals. Above 0 °C it melts into water.' },
   { id: DISC.EXTINGUISH, title: 'Extinguishing', recipe: 'Fire + water', hint: 'Fight fire with water.',
-    text: 'Water absorbs heat and smothers flames, turning into steam as it does.' },
+    text: 'Water absorbs heat and smothers flames.' },
   { id: DISC.FLOAT, title: 'Buoyancy', recipe: 'Oil + water', hint: 'Mix two liquids.',
     text: 'Oil (850 kg/m³) is lighter than water (1000 kg/m³), so it rises and floats on top.' },
   { id: DISC.SINK, title: 'Sinking', recipe: 'Sand + water', hint: 'Drop a powder into a liquid.',
@@ -61,6 +59,9 @@ export const DISCOVERIES = [
   { id: DISC.GLOW, title: 'Incandescence', recipe: 'Anything + 525 °C', hint: 'Get something really hot.',
     text: 'Above about 525 °C (the Draper point) hot matter starts to glow red, then orange and yellow.' },
 ];
+
+// Look up a discovery by its id (ids stay stable even if one is retired).
+export const DISCOVERY_BY_ID = Object.fromEntries(DISCOVERIES.map(d => [d.id, d]));
 
 // state: how it moves. k: heat conductivity (0..0.3). c: heat capacity.
 // hot/cold: phase change thresholds. latent: heat (in degrees) a cell must
@@ -108,7 +109,7 @@ def(SEED, { name: 'Seed', cat: 'life', state: POWDER, density: 1100, k: 0.05, c:
   c2: ['#b07f3a', '#956a2f', '#c8954b', '#7f592a'], c3: ['#8f6c3c', '#7c5c33', '#a67f48', '#6a4e2b'] });
 
 def(WATER, { name: 'Water', cat: 'liquid', state: LIQUID, density: 1000, k: 0.14, c: 1.6, flow: 5, visc: 1, hard: 0,
-  hot: [100, STEAM, DISC.BOIL], cold: [0, ICE, DISC.FREEZE], latent: [300, 60],
+  hot: [100, EMPTY, DISC.BOIL], cold: [0, ICE, DISC.FREEZE], latent: [300, 60],
   desc: 'Flows and levels out. Boils at 100 °C, freezes at 0 °C.',
   c2: ['#62a89a', '#5a9f92', '#6db1a3', '#559789'], c3: ['#2fa397', '#2b998e', '#38ad9f', '#278c82'], group3: 1, a3: 0.7 });
 
@@ -125,11 +126,6 @@ def(LAVA, { name: 'Lava', cat: 'liquid', state: LIQUID, density: 2700, k: 0.16, 
   cold: [700, STONE, DISC.CRUST], hard: 0, glow: true,
   desc: 'Molten rock at about 1250 °C. Sets things on fire and hardens as it cools.',
   c2: ['#ff7a1a', '#ff9a2e', '#e8561b', '#ffc04a'], c3: ['#ff7a1a', '#ff9a2e', '#e8561b', '#ffc04a'], group3: 2 });
-
-def(STEAM, { name: 'Steam', cat: 'gas', state: GAS, density: 0.6, k: 0.04, c: 0.4, temp: 110, life: [500, 900],
-  rise: 0.75, cold: [96, WATER, DISC.RAIN], hard: 0,
-  desc: 'Hot water vapour. Rises, cools and falls as rain.',
-  c2: ['#eef3ee', '#e2ebe6', '#f8faf6', '#d6e2dd'], c3: ['#e6f5f2', '#d8ece8', '#f2fbf9', '#cbe3de'], group3: 3, a3: 0.3 });
 
 def(SMOKE, { name: 'Smoke', cat: 'gas', state: GAS, density: 1.0, k: 0.03, c: 0.3, life: [90, 220], rise: 0.5, hard: 0,
   desc: 'Soot carried up by hot air. Fades away over time.',
@@ -229,7 +225,7 @@ for (let t = 0; t < COUNT; t++) {
 export const PALETTE = [
   { cat: 'Powders', items: [SAND, DIRT, SNOW, GUNPOWDER, ASH, OBSIDIAN] },
   { cat: 'Liquids', items: [WATER, OIL, LAVA, ACID] },
-  { cat: 'Gases', items: [FIRE, STEAM, SMOKE] },
+  { cat: 'Gases', items: [FIRE, SMOKE] },
   { cat: 'Solids', items: [STONE, WOOD, ICE, METAL, GLASS] },
   { cat: 'Life', items: [PLANT, SEED] },
 ];

@@ -53,7 +53,7 @@ const state = {
 };
 
 // ----- discoveries -----
-const found = new Set(store.get('found', []));
+const found = new Set(store.get('found', []).filter(id => El.DISCOVERY_BY_ID[id]));
 for (const id of found) world.found[id] = 1;
 
 function addDiscovery(id) {
@@ -61,7 +61,7 @@ function addDiscovery(id) {
   found.add(id);
   store.set('found', [...found]);
   world.found[id] = 1;
-  const d = El.DISCOVERIES[id];
+  const d = El.DISCOVERY_BY_ID[id];
   toast(d.title, d.recipe, d.text);
   renderDiscoveries();
 }
@@ -131,7 +131,7 @@ function select(sel) {
     facts.push(['State', { 1: 'Solid', 2: 'Powder', 3: 'Liquid', 4: 'Gas' }[e.state]]);
     facts.push(['Density', `${e.density.toLocaleString('en-US')} kg/m³`]);
     if (e.temp !== undefined) facts.push(['Starts at', fmtTemp(e.temp)]);
-    if (e.hot) facts.push([{ [El.STEAM]: 'Boils', [El.GLASS]: 'Fuses' }[e.hot[1]] || 'Melts', fmtTemp(Math.floor(e.hot[0]))]);
+    if (e.hot) facts.push([{ [El.EMPTY]: 'Boils', [El.GLASS]: 'Fuses' }[e.hot[1]] || 'Melts', fmtTemp(Math.floor(e.hot[0]))]);
     if (e.cold) facts.push([{ [El.ICE]: 'Freezes', [El.WATER]: 'Condenses' }[e.cold[1]] || 'Hardens', fmtTemp(Math.floor(e.cold[0]))]);
     if (e.ignite) facts.push([sel.id === El.GUNPOWDER ? 'Explodes' : 'Ignites', fmtTemp(e.ignite)]);
     info.querySelector('h3').textContent = e.name;
@@ -490,8 +490,11 @@ function frame(now) {
   const hover = is2d ? paint2d() : paint3d();
   if (!state.paused) {
     state.acc += dt * state.speed * RATE;
+    // At most 3 steps, and stop early if this frame's simulation time runs
+    // out, so heavy moments slow the simulation slightly instead of the frame rate.
+    const t0 = performance.now();
     let n = 0;
-    while (state.acc >= 1 && n < 3) { world.step(); state.acc -= 1; n++; }
+    while (state.acc >= 1 && n < 3 && (n === 0 || performance.now() - t0 < 10)) { world.step(); state.acc -= 1; n++; }
     if (state.acc > 3) state.acc = 0;
   } else if (state.stepOnce) {
     world.step();

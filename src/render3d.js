@@ -328,7 +328,7 @@ export class Renderer3D {
       // Water, ice, glass, acid: see-through but solid enough to write depth.
       new THREE.MeshLambertMaterial({ map: atlas, vertexColors: true, transparent: true }),
       new THREE.MeshBasicMaterial({ map: atlas, vertexColors: true }),
-      // Steam and smoke.
+      // Smoke.
       new THREE.MeshLambertMaterial({ map: atlas, vertexColors: true, transparent: true, depthWrite: false }),
     ];
 
@@ -377,6 +377,7 @@ export class Renderer3D {
     composer.addPass(this.bloom);
     composer.addPass(new OutputPass());
 
+    this.meshCursor = 0;
     this.raycaster = new THREE.Raycaster();
     this.ndc = new THREE.Vector2();
     this.time = 0;
@@ -474,38 +475,65 @@ export class Renderer3D {
 
   rebuildAll() { this.world.dirty.fill(1); }
 
-  updateChunks(budget) {
+  // Rebuild changed chunks for at most `maxMs` milliseconds, carrying on
+  // next frame from where it stopped, so lots of moving water never stalls
+  // a frame. Chunks in view go first.
+  updateChunks(maxMs) {
     const w = this.world;
     const { CX, CZ } = w;
+    const start = performance.now();
     let done = 0;
-    for (let c = 0; c < w.chunkCount && done < budget; c++) {
-      if (!w.dirty[c]) continue;
-      w.dirty[c] = 0;
-      done++;
-      const cx = c % CX, cz = Math.floor(c / CX) % CZ, cy = Math.floor(c / (CX * CZ));
-      const stats = this.chunkGlow[c];
-      stats.n = stats.x = stats.y = stats.z = 0;
-      meshBox(this.src, cx * 16, cy * 16, cz * 16, Math.min(w.W, cx * 16 + 16), Math.min(w.H, cy * 16 + 16), Math.min(w.D, cz * 16 + 16), this.bufs, stats);
-      for (let g = 0; g < 4; g++) {
-        const geo = this.bufs[g].geometry();
-        let mesh = this.chunks[c][g];
-        if (!geo) { if (mesh) { mesh.visible = false; } continue; }
-        if (!mesh) {
-          mesh = new THREE.Mesh(geo, this.materials[g]);
-          mesh.castShadow = g === 0;
-          mesh.receiveShadow = g === 0 || g === 1;
-          mesh.matrixAutoUpdate = false;
-          this.chunks[c][g] = mesh;
-          this.scene.add(mesh);
-        } else {
-          mesh.geometry.dispose();
-          mesh.geometry = geo;
-          mesh.visible = true;
-        }
+    if (!this.frustum) { this.frustum = new THREE.Frustum(); this.projView = new THREE.Matrix4(); this.box = new THREE.Box3(); }
+    this.projView.multiplyMatrices(this.camera.projectionMatrix, this.camera.matrixWorldInverse);
+    this.frustum.setFromProjectionMatrix(this.projView);
+    for (let pass = 0; pass < 2; pass++) {
+      for (let k = 0; k < w.chunkCount; k++) {
+        if (done > 0 && performance.now() - start > maxMs) break;
+        const c = (this.meshCursor + k) % w.chunkCount;
+        if (!w.dirty[c]) continue;
+        if (pass === 0 && !this.chunkInView(c)) continue;
+        this.rebuildChunk(c);
+        done++;
       }
     }
+    this.meshCursor = (this.meshCursor + 7) % w.chunkCount;
     if (done) this.updateGlowLight();
     return done;
+  }
+
+  chunkInView(c) {
+    const w = this.world;
+    const cx = c % w.CX, cz = Math.floor(c / w.CX) % w.CZ, cy = Math.floor(c / (w.CX * w.CZ));
+    this.box.min.set(cx * 16 - w.W / 2, cy * 16, cz * 16 - w.D / 2);
+    this.box.max.set(this.box.min.x + 16, this.box.min.y + 16, this.box.min.z + 16);
+    return this.frustum.intersectsBox(this.box);
+  }
+
+  rebuildChunk(c) {
+    const w = this.world;
+    const { CX, CZ } = w;
+    w.dirty[c] = 0;
+    const cx = c % CX, cz = Math.floor(c / CX) % CZ, cy = Math.floor(c / (CX * CZ));
+    const stats = this.chunkGlow[c];
+    stats.n = stats.x = stats.y = stats.z = 0;
+    meshBox(this.src, cx * 16, cy * 16, cz * 16, Math.min(w.W, cx * 16 + 16), Math.min(w.H, cy * 16 + 16), Math.min(w.D, cz * 16 + 16), this.bufs, stats);
+    for (let g = 0; g < 4; g++) {
+      const geo = this.bufs[g].geometry();
+      let mesh = this.chunks[c][g];
+      if (!geo) { if (mesh) { mesh.visible = false; } continue; }
+      if (!mesh) {
+        mesh = new THREE.Mesh(geo, this.materials[g]);
+        mesh.castShadow = g === 0;
+        mesh.receiveShadow = g === 0 || g === 1;
+        mesh.matrixAutoUpdate = false;
+        this.chunks[c][g] = mesh;
+        this.scene.add(mesh);
+      } else {
+        mesh.geometry.dispose();
+        mesh.geometry = geo;
+        mesh.visible = true;
+      }
+    }
   }
 
   updateGlowLight() {
@@ -590,7 +618,7 @@ export class Renderer3D {
 
   render(dt, simulating) {
     this.time += dt;
-    this.updateChunks(simulating ? 20 : 48);
+    this.updateChunks(simulating ? 5 : 10);
     this.controls.update();
     this.hideBlockingTrees();
     this.sky.position.copy(this.camera.position);

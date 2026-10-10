@@ -23,7 +23,7 @@ Because the 2D view is a slice of a 3D world, things can move out of the slice.
 Water poured on flat ground spreads out in depth too, so it gets thinner in
 the side view, just as it really would.
 
-There are 20 reactions to discover, such as obsidian, rain, glassmaking and
+There are 19 reactions to discover, such as obsidian, boiling, glassmaking and
 explosions. The **Discoveries** button in the top right keeps track of them.
 
 ---
@@ -120,7 +120,7 @@ Everywhere:
 - `M` switches between 2D and 3D. `?` opens the help.
 
 Things to try:
-- Pour lava into the pond and watch obsidian and steam form.
+- Pour lava into the pond and watch obsidian form as the water boils away.
 - Drop a seed on the grass, then add a little water next to it.
 - Use the Heat tool on the tree, or on a pile of sand.
 - Pour oil on water, then set it on fire.
@@ -167,7 +167,7 @@ catches fire. Many times a second, every cell:
 1. **Changes phase** if it is hot or cold enough. Melting and boiling use
    latent heat, so ice stays at 0 °C while it melts and water stays at 100 °C
    while it boils.
-2. **Reacts.** Fire needs air (steam smothers it), acid eats most materials,
+2. **Reacts.** Fire needs air, water smothers it, acid eats most materials,
    plants drink water and grow, seeds sprout into trees, and gunpowder explodes.
 3. **Moves.** Gravity speeds falling things up, denser things sink through
    lighter liquids, liquids flow sideways to level out, gases rise, and

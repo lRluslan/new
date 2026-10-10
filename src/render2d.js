@@ -7,7 +7,7 @@ import * as El from './elements.js';
 import { rng } from './scenes.js';
 
 const {
-  EMPTY, STONE, DIRT, SAND, SNOW, WATER, OIL, ACID, LAVA, STEAM, SMOKE, FIRE, WOOD, PLANT,
+  EMPTY, STONE, DIRT, SAND, SNOW, WATER, OIL, ACID, LAVA, SMOKE, FIRE, WOOD, PLANT,
   ICE, GLASS, SEED, STATE, GAS, GLOWS,
 } = El;
 
@@ -31,7 +31,7 @@ const FIRE_P = ['#fff6c4', '#ffe07a', '#ffb636', '#ff8a1f', '#ec5a1a', '#b8361a'
 const LAVA_P = ['#ffd86e', '#ffab3a', '#ff7f1d', '#ec5a1b', '#c8401a'].map(packHex);
 const CRUST = packHex('#4a1e12');
 const HOT_RED = packHex('#ff4a14'), HOT_YEL = packHex('#ffcf6a');
-const STEAM_C = packHex('#f4f7f1'), SMOKE_C = packHex('#3f3b35'), GLASS_C = packHex('#e8f6f2');
+const SMOKE_C = packHex('#3f3b35'), GLASS_C = packHex('#e8f6f2');
 const SAND_TOP = packHex('#fcf0c8'), STONE_TOP = packHex('#b9b399'), SNOW_TOP = packHex('#ffffff');
 const OIL_TOP = packHex('#7a5a35'), WOOD_TOP = packHex('#a8743f'), ICE_TOP = packHex('#f2fdfd');
 const LEAF_COLORS = ['#e08a2c', '#d9a531', '#c4562a', '#f0c24a', '#b5462a'].map(packHex);
@@ -326,7 +326,6 @@ export class Renderer2D {
             if (T < 950) c = blend(c, CRUST, Math.min(0.75, (950 - T) / 330));
             break;
           }
-          case STEAM: c = blend(buf[p], STEAM_C, 0.38 + (sh & 3) * 0.05); break;
           case SMOKE: c = blend(buf[p], SMOKE_C, 0.55 + (sh & 3) * 0.06); break;
           case GLASS: c = blend(buf[p], GLASS_C, 0.4); if (exposed && run === 0) c = GLASS_C; break;
           case ACID: if (run === 0) c = PAL[ACID][2]; break;

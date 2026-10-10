@@ -11,14 +11,14 @@ export const TILE = 16, PAD = 8, CELL = TILE + 2 * PAD, COLS = 8, ROWS = 4;
 
 const T = {
   stone: 0, dirt: 1, grassTop: 2, grassSide: 3, sand: 4, snow: 5, ash: 6, gunpowder: 7,
-  seed: 8, water: 9, oil: 10, acid: 11, lava: 12, steam: 13, smoke: 14, fire: 15,
+  seed: 8, water: 9, oil: 10, acid: 11, lava: 12, smoke: 14, fire: 15,
   woodSide: 16, woodTop: 17, leaves: 18, ice: 19, glass: 20, obsidian: 21, metal: 22,
 };
 
 const BY_ELEMENT = {
   [El.STONE]: T.stone, [El.DIRT]: T.dirt, [El.SAND]: T.sand, [El.SNOW]: T.snow, [El.ASH]: T.ash,
   [El.GUNPOWDER]: T.gunpowder, [El.SEED]: T.seed, [El.WATER]: T.water, [El.OIL]: T.oil,
-  [El.ACID]: T.acid, [El.LAVA]: T.lava, [El.STEAM]: T.steam, [El.SMOKE]: T.smoke, [El.FIRE]: T.fire,
+  [El.ACID]: T.acid, [El.LAVA]: T.lava, [El.SMOKE]: T.smoke, [El.FIRE]: T.fire,
   [El.WOOD]: T.woodSide, [El.PLANT]: T.leaves, [El.ICE]: T.ice, [El.GLASS]: T.glass,
   [El.OBSIDIAN]: T.obsidian, [El.METAL]: T.metal,
 };
@@ -168,7 +168,6 @@ export function buildAtlas() {
     [T.oil]: P.sparkle(c3(El.OIL), '#7a5a35', 0.06),
     [T.acid]: P.sparkle(c3(El.ACID), '#e6ff9a', 0.1),
     [T.lava]: P.lava(c3(El.LAVA)),
-    [T.steam]: P.speckle(c3(El.STEAM)),
     [T.smoke]: P.speckle(c3(El.SMOKE)),
     [T.fire]: P.fire(),
     [T.woodSide]: P.bark(c3(El.WOOD)),

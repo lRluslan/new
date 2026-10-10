@@ -9,7 +9,7 @@
 //      hot air rising (convection) and slow cooling to room temperature.
 
 import {
-  EMPTY, STONE, DIRT, SAND, GUNPOWDER, SEED, WATER, OIL, ACID, LAVA, STEAM, SMOKE,
+  EMPTY, STONE, DIRT, SAND, GUNPOWDER, SEED, WATER, OIL, ACID, LAVA, SMOKE,
   FIRE, WOOD, PLANT, OBSIDIAN, ASH, COUNT, SOLID, POWDER, LIQUID, GAS, AMBIENT, FIRE_TEMP, DISC,
   STATE, DENS, K, CAP, TEMP0, HOT_AT, HOT_TO, HOT_DISC, COLD_AT, COLD_TO, COLD_DISC, LATENT_HOT, LATENT_COLD,
   IGNITE, BURN_TIME, BURN_HEAT, ASH_CHANCE, SLIDE, FLOW, VISC, RISE, LIFE_MIN, LIFE_SPAN,
@@ -20,6 +20,7 @@ const GRAVITY = 0.3;   // cells per step², so falling things speed up
 const MAX_SPEED = 7;   // terminal velocity in cells per step
 const BURNING = 4;     // flag bit: this cell is on fire
 const GROWING = 8;     // flag bit: tip of a growing tree
+const RESTING = 16;    // flag bit: a liquid that found nowhere to go; skipped until a neighbour changes
 const CHUNK = 16;      // 3D mesh chunk size
 const LOOK_AHEAD = 24; // how far a liquid looks sideways for somewhere lower to flow
 
@@ -40,19 +41,14 @@ AIRY[EMPTY] = 1; AIRY[FIRE] = 1; AIRY[SMOKE] = 1;
 // Cells that can rest: solids and powders. A resting cell at a steady
 // temperature is skipped, which keeps the large buried ground cheap.
 const BLOCKS = new Uint8Array(COUNT);
+const BLOCKS_OR_LIQUID = new Uint8Array(COUNT);
 const CAN_SLEEP = new Uint8Array(COUNT);
 const WAKE_T = new Float32Array(COUNT);
 for (let t = 1; t < COUNT; t++) {
   BLOCKS[t] = STATE[t] === SOLID || STATE[t] === POWDER ? 1 : 0;
+  BLOCKS_OR_LIQUID[t] = BLOCKS[t] || STATE[t] === LIQUID ? 1 : 0;
   CAN_SLEEP[t] = BLOCKS[t] && t !== SEED ? 1 : 0;
   WAKE_T[t] = Math.min(IGNITE[t] || Infinity, GLOWS[t] ? Infinity : 525);
-}
-// Liquids that can rest when calm (acid keeps working, so it never rests).
-const CALM_OK = new Uint8Array(COUNT);
-const FULL = new Uint8Array(COUNT);
-for (let t = 1; t < COUNT; t++) {
-  CALM_OK[t] = STATE[t] === LIQUID && t !== ACID ? 1 : 0;
-  FULL[t] = STATE[t] !== GAS ? 1 : 0;
 }
 
 export class World {
@@ -78,6 +74,10 @@ export class World {
     this.steps = 0;
     this.quiet = 0;   // steps to ignore discoveries for, while a new scene settles
     this.setupChunks();
+    // Cells whose options change when a cell changes: itself, its six faces,
+    // and the eight diagonals above it (which could slide down into it).
+    this.near = [0, 1, -1, W, -W, this.L, -this.L];
+    for (let k = 0; k < 8; k++) this.near.push(this.L + DIAG_X[k] + DIAG_Z[k] * W);
   }
 
   // ----- 3D chunk bookkeeping so the renderer only rebuilds what changed -----
@@ -88,6 +88,7 @@ export class World {
     this.dirty = new Uint8Array(this.chunkCount).fill(1);
     this.heatAct = new Uint8Array(this.chunkCount).fill(1); // regions holding heat away from 20 °C
     this.awake = new Uint8Array(this.chunkCount).fill(1);   // regions where something may move
+    this.restChunk = new Uint8Array(this.chunkCount);         // regions holding resting liquid
     this.awakeNext = new Uint8Array(this.chunkCount).fill(1);
     this.chunkOf = new Uint16Array(N);
     this.edge = new Uint8Array(N);
@@ -107,8 +108,11 @@ export class World {
     }
   }
 
-  // A cell changed: its region needs a new mesh and must be simulated next step.
+  // A cell changed: its region needs a new mesh and must be simulated next step,
+  // and resting liquids next to it (or diagonally above) get another look.
   touch(i) {
+    const fl = this.flags, near = this.near;
+    for (let k = 0; k < near.length; k++) fl[i + near[k]] &= ~RESTING; // out-of-range writes are ignored
     const c = this.chunkOf[i], d = this.dirty, a = this.awakeNext;
     d[c] = 1; a[c] = 1;
     const e = this.edge[i];
@@ -175,6 +179,7 @@ export class World {
     this.dirty.fill(1);
     this.heatAct.fill(1);
     this.awake.fill(1);
+    this.restChunk.fill(0);
     this.awakeNext.fill(1);
     this.quiet = 90;
   }
@@ -193,8 +198,7 @@ export class World {
     return false;
   }
 
-  // Is there oxygen next to this cell? Flames and smoke mix with air;
-  // steam does not, which is why steam smothers fires.
+  // Is there oxygen next to this cell? Flames and smoke mix with air.
   hasAir(i, x, y, z) {
     const ty = this.type, W = this.W, L = this.L;
     if (x > 0 && AIRY[ty[i - 1]]) return true;
@@ -241,8 +245,8 @@ export class World {
     this.awake = awake;
     const next = this.awakeNext;
     next.fill(0);
-    const { W, H, D, type, stamp, temp, flags, vx, vy, vz, life, heatAct, CX, CY, CZ } = this;
-    const clock = this.clock;
+    const { W, H, D, type, stamp, temp, flags, vx, vy, vz, life, heatAct, restChunk, CX, CY, CZ } = this;
+    const clock = this.clock, phase = this.steps & 15;
     const flipX = clock & 1, flipZ = (clock >> 1) & 1;
     for (let cy = 0; cy < CY; cy++) {
       const y0 = cy * CHUNK, y1 = Math.min(H, y0 + CHUNK);
@@ -252,7 +256,11 @@ export class World {
         for (let cxx = 0; cxx < CX; cxx++) {
           const cx = flipX ? CX - 1 - cxx : cxx;
           const c = cx + CX * (cz + CZ * cy);
-          if (!awake[c] && !heatAct[c]) continue;
+          // Every 16 steps each region re-checks its resting liquid once, in
+          // case somewhere lower opened up further away than its neighbours.
+          const recheck = restChunk[c] === 1 && (c & 15) === phase;
+          if (recheck) restChunk[c] = 0;
+          else if (!awake[c] && !heatAct[c]) continue;
           const x0 = cx * CHUNK, x1 = Math.min(W, x0 + CHUNK);
           for (let y = y0; y < y1; y++) {
             for (let zz = z0; zz < z1; zz++) {
@@ -269,9 +277,11 @@ export class World {
                 if (CAN_SLEEP[t] && T <= HOT_AT[t] && T >= COLD_AT[t] && T < WAKE_T[t] && (flags[i] & (BURNING | GROWING)) === 0) {
                   if (STATE[t] === SOLID) { if (t !== PLANT || life[i] <= 0) continue; }
                   else if (vx[i] === 0 && vy[i] === 0 && vz[i] === 0 && this.settled(i, x, y, z)) continue;
-                } else if (CALM_OK[t] && T <= HOT_AT[t] && T >= COLD_AT[t] && T < WAKE_T[t] && (flags[i] & BURNING) === 0 &&
-                  vx[i] === 0 && vy[i] === 0 && vz[i] === 0 && this.calm(i, t, x, y, z)) {
-                  continue;
+                } else if ((flags[i] & RESTING) && T <= HOT_AT[t] && T >= COLD_AT[t] && T < WAKE_T[t]) {
+                  // Resting liquid: nothing around it has changed since it last tried to move.
+                  // On a re-check, liquid boxed in on every side still cannot move.
+                  if (!recheck) continue;
+                  if (this.enclosed(i, t, x, y, z)) { restChunk[c] = 1; continue; }
                 }
                 next[c] = 1;
                 this.update(i, t, x, y, z);
@@ -284,23 +294,28 @@ export class World {
     this.conduct();
   }
 
-  // A liquid is calm when it cannot fall, slide or flow: everything below is
-  // solid or at least as dense, and its sides are full.
-  calm(i, t, x, y, z) {
-    const { W, H, D, L, type } = this;
-    if (y > 0) {
-      const b = i - L;
-      if (!this.holds(t, type[b])) return false;
-      for (let k = 0; k < 8; k++) {
-        const nx = x + DIAG_X[k], nz = z + DIAG_Z[k];
-        if (nx < 0 || nx >= W || nz < 0 || nz >= D) continue;
-        if (!this.holds(t, type[b + DIAG_X[k] + DIAG_Z[k] * W])) return false;
-      }
+  // A liquid with full sides that cannot fall or slide has nowhere to go.
+  enclosed(i, t, x, y, z) {
+    const { W, D, type } = this;
+    if (x > 0 && !BLOCKS_OR_LIQUID[type[i - 1]]) return false;
+    if (x < W - 1 && !BLOCKS_OR_LIQUID[type[i + 1]]) return false;
+    if (z > 0 && !BLOCKS_OR_LIQUID[type[i - W]]) return false;
+    if (z < D - 1 && !BLOCKS_OR_LIQUID[type[i + W]]) return false;
+    return this.supported(i, t, x, y, z);
+  }
+
+  // True when a liquid surely cannot fall or slide: the cell below and every
+  // diagonal below are solid, or liquid at least as dense.
+  supported(i, t, x, y, z) {
+    if (y === 0) return true;
+    const { W, D, type } = this;
+    const b = i - this.L;
+    if (!this.holds(t, type[b])) return false;
+    for (let k = 0; k < 8; k++) {
+      const nx = x + DIAG_X[k], nz = z + DIAG_Z[k];
+      if (nx < 0 || nx >= W || nz < 0 || nz >= D) continue;
+      if (!this.holds(t, type[b + DIAG_X[k] + DIAG_Z[k] * W])) return false;
     }
-    if (x > 0 && !FULL[type[i - 1]]) return false;
-    if (x < W - 1 && !FULL[type[i + 1]]) return false;
-    if (z > 0 && !FULL[type[i - W]]) return false;
-    if (z < D - 1 && !FULL[type[i + W]]) return false;
     return true;
   }
 
@@ -385,19 +400,9 @@ export class World {
   cool(i, t, x, y, z) {
     if (t === LAVA) {
       if (Math.random() < 0.3) {
-        const quenched = this.hasNeighbor(i, x, y, z, WATER) || this.hasNeighbor(i, x, y, z, STEAM);
+        const quenched = this.hasNeighbor(i, x, y, z, WATER);
         this.morph(i, quenched ? OBSIDIAN : STONE);
         this.discover(quenched ? DISC.OBSIDIAN : DISC.CRUST);
-        return true;
-      }
-      return false;
-    }
-    if (t === STEAM) {
-      // Condensation needs time, and happens faster at the ceiling.
-      const chance = y === this.H - 1 ? 0.03 : 0.006;
-      if (Math.random() < chance || this.life[i] <= 0) {
-        this.morph(i, WATER);
-        this.discover(DISC.RAIN);
         return true;
       }
       return false;
@@ -512,7 +517,12 @@ export class World {
       const k = this.slideDown(i, t, x, z);
       if (k >= 0) return k;
     }
-    return this.spread(i, t, x, y, z);
+    const s = this.spread(i, t, x, y, z);
+    if (s === i && t !== ACID && this.supported(i, t, x, y, z)) {
+      this.flags[i] |= RESTING;
+      this.restChunk[this.chunkOf[i]] = 1;
+    }
+    return s;
   }
 
   // Free fall with acceleration. Returns the new index, or -1 if blocked.
@@ -529,6 +539,10 @@ export class World {
     if (v < -MAX_SPEED) v = -MAX_SPEED;
     let n = Math.max(1, Math.round(-v));
     let cur = i, cy = y;
+    // Drop straight through open air in one move.
+    let k = 0;
+    while (k < n && cy - k > 0 && ty[cur - (k + 1) * L] === EMPTY) k++;
+    if (k > 0) { this.swap(cur, cur - k * L); cur -= k * L; cy -= k; n -= k; }
     while (n > 0 && cy > 0 && this.canEnter(t, ty[cur - L])) {
       this.swap(cur, cur - L);
       cur -= L; cy--; n--;
@@ -584,7 +598,7 @@ export class World {
     if (dir >= dirs) dir &= 1;
     const steps = FLOW[t];
     const pressed = y < H - 1 && STATE[type[i + L]] === LIQUID;
-    for (let attempt = 0; attempt < (this.is3D ? 3 : 2); attempt++) {
+    for (let attempt = 0; attempt < dirs; attempt++) {
       const dx = SIDE_X[dir], dz = SIDE_Z[dir];
       const off = dx + dz * W;
       let j = i, cx = x, cz = z, open = 0, drop = 0;
@@ -605,7 +619,7 @@ export class World {
         fl[target] = (fl[target] & ~3) | dir;
         return target;
       }
-      dir = this.is3D ? (dir + 1 + ((Math.random() * 3) | 0)) & 3 : dir ^ 1;
+      dir = (dir + 1) % dirs;
     }
     fl[i] = (fl[i] & ~3) | dir;
     return i;
@@ -672,10 +686,6 @@ export class World {
       }
     } else if (t === SMOKE) {
       if (life <= 0 || (y === this.H - 1 && Math.random() < 0.05)) { this.set(i, EMPTY, this.temp[i]); return; }
-    } else if (t === STEAM && life <= 0) {
-      this.morph(i, WATER);
-      this.discover(DISC.RAIN);
-      return;
     }
 
     const { W, D, L, type } = this;
