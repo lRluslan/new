@@ -10,7 +10,10 @@ There is **one world**, a block of 256 × 112 × 64 voxels (about 1.8 million ce
 running all the time. You can look at it two ways. Switch with the **2D / 3D**
 button at the top, or press **M**:
 
-- **3D voxel world**: the whole world as blocks, in a misty teal forest. You can turn the camera around it.
+- **3D voxel world**: the whole world as a diorama, a floating island of blocks hanging in a starry
+  teal sky with little islets and clouds drifting around it. Turn it to see it from every side,
+  even from underneath, where its rocky base and hanging roots and crystals are. The sides of the
+  island show the world in cross-section, so you can see the soil and stone layers.
 - **2D side view**: one slice cut straight through the same world, drawn as warm autumn pixel art,
   like looking at the side of an ant farm. Move the cut forward and back with the **Slice** slider
   or the **W** and **S** keys.
@@ -108,7 +111,7 @@ GitHub Pages is free for public projects. For a private project it needs a paid 
 | Paint | Left mouse | Left mouse |
 | Erase | Right mouse, or the Eraser tool | Eraser tool |
 | Slice | Slice slider, `W` and `S` (or arrow up and down) | `W` and `S` (the slice flashes in yellow) |
-| Camera | | Right-drag turns, scroll zooms, middle-drag moves, A and D keys orbit |
+| Camera | | Right-drag turns all the way around (even underneath), scroll zooms toward the mouse, middle-drag moves, A and D keys orbit |
 | Brush size | Scroll wheel, or the `[` and `]` keys | `[` and `]` keys |
 | Touch | Drag a finger to paint | One finger paints, two fingers turn and zoom |
 

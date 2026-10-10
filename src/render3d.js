@@ -1,7 +1,8 @@
-// 3D renderer: turns the voxel world into textured block meshes (only the
-// faces you can see, with soft corner shadows), and surrounds it with a misty
-// teal forest, light shafts and floating dust. Rendered at a low resolution
-// and scaled up so it keeps a pixel-art look.
+// 3D renderer: shows the voxel world as a diorama, a floating island hanging
+// in a starry teal sky that you can turn around and see from every side.
+// The world is turned into textured block meshes (only the faces you can see,
+// with soft corner shadows). Rendered at a low resolution and scaled up so it
+// keeps a pixel-art look.
 
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
@@ -11,7 +12,7 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import * as El from './elements.js';
 import { buildAtlas, tileFor, COLS, ROWS, TILE, PAD, CELL } from './textures.js';
-import { rng, groundHeight } from './scenes.js';
+import { rng } from './scenes.js';
 
 const { EMPTY, DIRT, WOOD, PLANT, STONE, WATER, STATE, GAS, GROUP3, ALPHA3, OCCLUDES, GLOWS } = El;
 
@@ -74,7 +75,8 @@ class GeoBuf {
 }
 
 // Build meshes for the box [x0,x1)×[y0,y1)×[z0,z1) of a voxel grid.
-// src: { W, H, D, type, ox, oy, oz } (offsets place it in the world).
+// src: { W, H, D, type, ox, oy, oz, openBelow?, capTop? } (offsets place it in
+// the world; openBelow draws bottom faces, capTop hides top faces).
 function meshBox(src, x0, y0, z0, x1, y1, z1, bufs, stats) {
   const { W, H, D, type } = src;
   const L = W * D;
@@ -94,8 +96,9 @@ function meshBox(src, x0, y0, z0, x1, y1, z1, bufs, stats) {
     for (let f = 0; f < 6; f++) {
       const face = FACES[f];
       const nx = x + face.dir[0], ny = y + face.dir[1], nz = z + face.dir[2];
-      if (ny < 0) continue;
-      const nt = (nx < 0 || nz < 0 || nx >= W || nz >= D || ny >= H) ? EMPTY : type[nx + W * (nz + D * ny)];
+      if (ny < 0 && !src.openBelow) continue;   // the world's floor sits on the island
+      if (ny >= H && src.capTop) continue;      // the island's top is hidden under the world
+      const nt = (nx < 0 || nz < 0 || ny < 0 || nx >= W || nz >= D || ny >= H) ? EMPTY : type[nx + W * (nz + D * ny)];
       if (nt === t || OCCLUDES[nt] || !ownsFace(t, nt)) continue;
       if (buf.n + 4 > buf.cap) buf.grow(buf.cap * 2);
       const tile = tileFor(t, f, grassy);
@@ -127,120 +130,109 @@ function meshBox(src, x0, y0, z0, x1, y1, z1, bufs, stats) {
   }
 }
 
-function makeDecor(world) {
-  // A ring of tall pixel trees around the play area, fading into the fog.
-  // Ground and trees go in separate grids so trees can be hidden when they
-  // block the camera.
-  const PW = world.W, PD = world.D;          // play area size
-  const DW = PW + 150, DH = Math.round(world.H * 0.3) + 86, DD = PD + 180;
-  const ground = new Uint8Array(DW * DH * DD);
-  const trees = new Uint8Array(DW * DH * DD);
-  const rand = rng(2024);
-  const idx = (x, y, z) => x + DW * (z + DD * y);
-  const put = (x, y, z, t) => {
-    x = Math.round(x); y = Math.round(y); z = Math.round(z);
-    if (x < 0 || y < 0 || z < 0 || x >= DW || y >= DH || z >= DD) return;
-    if (Math.abs(x - DW / 2 + 0.5) < PW / 2 && Math.abs(z - DD / 2 + 0.5) < PD / 2 && y < world.H) return; // play area
-    (t === STONE || t === DIRT ? ground : trees)[idx(x, y, z)] = t;
-  };
-  const blob = (cx, cy, cz, r, ry, t) => {
-    for (let y = Math.floor(cy - ry); y <= cy + ry; y++) for (let z = Math.floor(cz - r); z <= cz + r; z++)
-      for (let x = Math.floor(cx - r); x <= cx + r; x++) {
-        const d = ((x - cx) / r) ** 2 + ((y - cy) / ry) ** 2 + ((z - cz) / r) ** 2;
-        if (d <= 1 && !(d > 0.75 && rand() < 0.45)) put(x, y, z, t);
-      }
-  };
-  // Ground continues the play area's rolling soil, then smooths out into
-  // gentle hills that rise toward the edge.
-  // Distance outside the play area's rectangle (0 inside it).
-  const outside = (x, z) => Math.hypot(Math.max(0, Math.abs(x - DW / 2) - PW / 2), Math.max(0, Math.abs(z - DD / 2) - PD / 2));
-  const base = world.H * 0.3;
-  const height = (x, z) => {
-    const sx = x - DW / 2 + PW / 2, sz = z - DD / 2 + PD / 2;
-    const out = outside(x, z);
-    const near = groundHeight(sx, sz, world.H);
-    const far = base + 2.2 * Math.sin(x * 0.045 + 1) * Math.cos(z * 0.05) + Math.max(0, out - 25) * 0.14;
-    const f = Math.min(1, out / 12);
-    return Math.round(near + (far - near) * f);
-  };
-  for (let z = 0; z < DD; z++) for (let x = 0; x < DW; x++) {
-    const h = height(x, z);
-    for (let y = 0; y < h; y++) put(x, y, z, y < h - 4 ? STONE : DIRT);
-  }
-  const placed = [];
-  for (let k = 0; k < 600 && placed.length < 90; k++) {
-    const x = 6 + rand() * (DW - 12), z = 6 + rand() * (DD - 12);
-    const out = outside(x, z);
-    if (out < 14 || out > 70) continue;
-    if (placed.some(([px, pz]) => Math.hypot(px - x, pz - z) < 11)) continue;
-    const rad = out + 60;
-    placed.push([x, z]);
-    const g = height(Math.round(x), Math.round(z));
-    const h = Math.min(DH - 14, 36 + rand() * 28 + (rad > 90 ? 12 : 0));
-    const w = rad > 85 ? 3 + ((rand() * 2) | 0) : 2 + ((rand() * 2) | 0);
-    for (let y = g - 1; y < g + h; y++) {
-      const flare = y < g + 3 ? 1 : 0;
-      for (let dz = -flare; dz < w + flare; dz++) for (let dx = -flare; dx < w + flare; dx++) {
-        if (flare && (dx < 0 || dx >= w) && (dz < 0 || dz >= w)) continue;
-        put(x + dx, y, z + dz, WOOD);
-      }
-    }
-    const nb = 2 + ((rand() * 3) | 0);
-    for (let b = 0; b < nb; b++) {
-      const a = rand() * Math.PI * 2, len = 6 + rand() * 9;
-      let bx = x + w / 2, by = g + h * (0.45 + rand() * 0.4), bz = z + w / 2;
-      for (let s = 0; s < len; s++) { bx += Math.cos(a); bz += Math.sin(a); by += 0.55; put(bx, by, bz, WOOD); }
-      blob(bx, by + 1, bz, 3.5 + rand() * 2.5, 2.6 + rand() * 1.5, PLANT);
-      for (let v = 0; v < 3; v++) {
-        const vx = bx + (rand() - 0.5) * 6, vz = bz + (rand() - 0.5) * 6, vl = 3 + rand() * 9;
-        for (let s = 0; s < vl; s++) put(vx, by - 1 - s, vz, PLANT);
-      }
-    }
-    const top = g + h;
-    blob(x + w / 2, top + 1, z + w / 2, 6 + rand() * 4, 4 + rand() * 2, PLANT);
-    blob(x + w / 2 + (rand() - 0.5) * 8, top - 3, z + w / 2 + (rand() - 0.5) * 8, 4 + rand() * 3, 3 + rand(), PLANT);
-  }
-  for (let k = 0; k < 300; k++) {
-    const x = rand() * DW, z = rand() * DD;
-    const out = outside(x, z);
-    if (out < 3 || out > 60) continue;
-    blob(x, height(Math.round(x), Math.round(z)) + 1, z, 2 + rand() * 2.5, 1.6 + rand() * 1.2, rand() < 0.15 ? STONE : PLANT);
-  }
-  const src = { W: DW, H: DH, D: DD, ox: -DW / 2, oy: 0, oz: -DD / 2 };
-  return { ground: { ...src, type: ground }, trees: { ...src, type: trees } };
+// Smooth value noise for the island's shape.
+function hash2(x, y) {
+  let h = (Math.imul(x, 374761393) + Math.imul(y, 668265263)) | 0;
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+}
+function vnoise(x, y) {
+  const xi = Math.floor(x), yi = Math.floor(y), xf = x - xi, yf = y - yi;
+  const u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf);
+  const a = hash2(xi, yi), b = hash2(xi + 1, yi), c = hash2(xi, yi + 1), d = hash2(xi + 1, yi + 1);
+  return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
 }
 
-// Soft additive beam that fades out when seen edge-on.
-function shaftMaterial(tex) {
-  return new THREE.ShaderMaterial({
-    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
-    uniforms: { map: { value: tex }, color: { value: new THREE.Color('#b9f7df') }, opacity: { value: 0.1 } },
-    vertexShader: `varying vec2 vUv; varying float vFacing;
-      void main(){ vUv = uv; vec4 mv = modelViewMatrix * vec4(position, 1.0);
-        vec3 n = normalize(normalMatrix * normal); vFacing = abs(dot(n, normalize(-mv.xyz)));
-        gl_Position = projectionMatrix * mv; }`,
-    fragmentShader: `uniform sampler2D map; uniform vec3 color; uniform float opacity; varying vec2 vUv; varying float vFacing;
-      void main(){ float a = texture2D(map, vUv).a * opacity * smoothstep(0.15, 0.6, vFacing);
-        gl_FragColor = vec4(color * a, a); }`,
-  });
+// The rocky underside the world sits on: an upside-down mountain that is
+// thin at the rim and deepest in the middle, with roots, vines and a few
+// ice crystals hanging from it.
+function makeIsland(world) {
+  const W = world.W, D = world.D;
+  const IH = Math.round(Math.min(W, D) * 0.9 + 30);
+  const type = new Uint8Array(W * IH * D);
+  const rand = rng(77);
+  const idx = (x, y, z) => x + W * (z + D * y);
+  const depth = new Int32Array(W * D);
+  for (let z = 0; z < D; z++) for (let x = 0; x < W; x++) {
+    // Rounded like an upside-down mountain: deepest in the middle, thin at the
+    // rim, with lumpy ridges and clusters of stalactites.
+    const r = Math.hypot((x - W / 2 + 0.5) / (W / 2), (z - D / 2 + 0.5) / (D / 2));
+    const e = Math.min(x, W - 1 - x, z, D - 1 - z);
+    const body = (IH - 14) * Math.pow(Math.max(0, 1 - r * r * 0.85), 1.6);
+    const lumps = 10 * vnoise(x / 13, z / 11) + 5 * vnoise(x / 5 + 9, z / 5);
+    const spikes = Math.pow(vnoise(x / 3.5 + 40, z / 3.5), 6) * 26;
+    const d = Math.min(3 + e * 1.4, body + lumps + spikes) + 2;
+    const dd = Math.max(2, Math.min(IH - 1, Math.round(d)));
+    depth[x + W * z] = dd;
+    // Rock layers in bands that follow the depth, so the island's rounded
+    // shape reads clearly from any angle.
+    const wobble = 3 * vnoise(x / 9, z / 9);
+    for (let k = 0; k < dd; k++) {
+      const y = IH - 1 - k;
+      const band = Math.floor((k + wobble) / 5) % 5;
+      let t = band === 1 ? DIRT : band === 3 ? El.SAND : STONE;
+      if (k > 3 && hash2(x * 7 + k, z * 3 - k) < 0.03) t = El.OBSIDIAN;
+      type[idx(x, y, z)] = t;
+    }
+  }
+  const hang = (x, z, from, len, t) => {
+    for (let k = 0; k < len; k++) {
+      const y = IH - 1 - from - k;
+      if (y < 0) break;
+      const i = idx(x, y, z);
+      if (type[i] === EMPTY) type[i] = t;
+    }
+  };
+  // Roots and vines spill over the rim and dangle below the island.
+  for (let n = 0; n < 160; n++) {
+    const side = (rand() * 4) | 0;
+    const x = side < 2 ? (rand() * W) | 0 : side === 2 ? 0 : W - 1;
+    const z = side >= 2 ? (rand() * D) | 0 : side === 0 ? 0 : D - 1;
+    hang(x, z, 0, 4 + ((rand() * 14) | 0), rand() < 0.35 ? WOOD : PLANT);
+  }
+  for (let n = 0; n < 160; n++) {
+    const x = 2 + ((rand() * (W - 4)) | 0), z = 2 + ((rand() * (D - 4)) | 0);
+    const d = depth[x + W * z];
+    if (d < 8) continue;
+    const t = rand() < 0.45 ? El.ICE : rand() < 0.5 ? WOOD : STONE;
+    hang(x, z, d, 2 + ((rand() * (t === El.ICE ? 4 : 9)) | 0), t);
+  }
+  return { W, H: IH, D, type, ox: -W / 2, oy: -IH, oz: -D / 2, openBelow: true, capTop: true };
 }
 
-function shaftTexture() {
-  const c = document.createElement('canvas');
-  c.width = 64; c.height = 256;
-  const ctx = c.getContext('2d');
-  const img = ctx.createImageData(64, 256);
-  for (let y = 0; y < 256; y++) for (let x = 0; x < 64; x++) {
-    const h = Math.exp(-(((x - 31.5) / 18) ** 2));
-    const v = Math.pow(1 - y / 255, 0.6) * Math.min(1, y / 30);
-    const o = (y * 64 + x) * 4;
-    img.data[o] = img.data[o + 1] = img.data[o + 2] = 255;
-    img.data[o + 3] = Math.round(255 * h * v);
+// A little floating rock with grass on top, sometimes with a tree.
+function makeIslet(rand, size) {
+  const S = size, H = Math.round(size * 1.6);
+  const W = S * 2 + 1;
+  const type = new Uint8Array(W * H * W);
+  const idx = (x, y, z) => x + W * (z + W * y);
+  const top = Math.round(H * 0.45);
+  for (let z = 0; z < W; z++) for (let x = 0; x < W; x++) {
+    const r = Math.hypot(x - S, z - S) / S;
+    if (r > 1) continue;
+    const d = Math.round((1 - r) * top * (0.75 + 0.5 * rand())) + 1;
+    for (let k = 0; k < d; k++) type[idx(x, top - k, z)] = k < 2 ? DIRT : STONE;
   }
-  ctx.putImageData(img, 0, 0);
-  const t = new THREE.CanvasTexture(c);
-  t.colorSpace = THREE.SRGBColorSpace;
-  return t;
+  if (rand() < 0.6) {
+    const h = 3 + ((rand() * (H - top - 6)) | 0);
+    for (let y = top + 1; y <= top + h; y++) type[idx(S, y, S)] = WOOD;
+    const cr = 2 + rand() * 1.8, cy = top + h + 1;
+    for (let y = Math.floor(cy - cr); y <= cy + cr; y++) for (let z = 0; z < W; z++) for (let x = 0; x < W; x++)
+      if (y < H && Math.hypot(x - S, (y - cy) * 1.2, z - S) <= cr && type[idx(x, y, z)] === EMPTY) type[idx(x, y, z)] = PLANT;
+  }
+  return { W, H, D: W, type, ox: -S, oy: -top, oz: -S, openBelow: true };
+}
+
+// A soft voxel cloud.
+function makeCloud(rand) {
+  const W = 34, H = 9, D = 22;
+  const type = new Uint8Array(W * H * D);
+  for (let b = 0; b < 6; b++) {
+    const cx = 6 + rand() * (W - 12), cz = 5 + rand() * (D - 10), cy = 3 + rand() * 2, r = 3 + rand() * 4;
+    for (let y = 0; y < H; y++) for (let z = 0; z < D; z++) for (let x = 0; x < W; x++)
+      if (Math.hypot((x - cx) / 1.4, (y - cy) * 1.5, z - cz) <= r) type[x + W * (z + D * y)] = El.SNOW;
+  }
+  return { W, H, D, type, ox: -W / 2, oy: -H / 2, oz: -D / 2, openBelow: true };
 }
 
 export class Renderer3D {
@@ -259,40 +251,50 @@ export class Renderer3D {
     stage.append(this.canvas);
 
     const scene = this.scene = new THREE.Scene();
-    const fogColor = new THREE.Color('#1c5752');
-    scene.fog = new THREE.Fog(fogColor, world.W * 0.6, world.W * 1.6);
+    const skyMid = new THREE.Color('#123d3f');
 
-    const camera = this.camera = new THREE.PerspectiveCamera(42, 1, 0.5, 1200);
-    this.home = { pos: new THREE.Vector3(world.W * 0.35, world.H * 0.75, world.W * 0.55), target: new THREE.Vector3(0, world.H * 0.3, 0) };
+    // The camera circles the floating world; it can go all the way around,
+    // underneath included, and zooms toward whatever is under the mouse.
+    const camera = this.camera = new THREE.PerspectiveCamera(40, 1, 0.5, 3000);
+    const target = new THREE.Vector3(0, world.H * 0.12, 0);
+    this.home = { pos: target.clone().add(new THREE.Vector3(0.52, 0.42, 0.74).normalize().multiplyScalar(world.W * 1.25)), target };
     camera.position.copy(this.home.pos);
     const controls = this.controls = new OrbitControls(camera, this.canvas);
     controls.target.copy(this.home.target);
     controls.enableDamping = true;
     controls.dampingFactor = 0.08;
-    controls.minDistance = 22;
-    controls.maxDistance = world.W * 1.4;
-    controls.maxPolarAngle = Math.PI * 0.47;
+    controls.minDistance = 20;
+    controls.maxDistance = world.W * 3;
+    controls.minPolarAngle = 0;
+    controls.maxPolarAngle = Math.PI;
+    controls.zoomToCursor = true;
+    controls.rotateSpeed = 0.8;
+    this.homeDir = this.home.pos.clone().sub(target).normalize();
+    this.userMoved = false;
+    controls.addEventListener('start', () => { this.userMoved = true; });
     controls.mouseButtons = { LEFT: null, MIDDLE: THREE.MOUSE.PAN, RIGHT: THREE.MOUSE.ROTATE };
     controls.touches = { ONE: null, TWO: THREE.TOUCH.DOLLY_ROTATE };
     controls.autoRotateSpeed = 0.5;
     controls.update();
 
-    // Sky: a teal gradient with a soft glow where the light comes from.
+    // Sky: deep teal space, brighter toward the sun, with a faint nebula band.
     this.sunDir = new THREE.Vector3(0.55, 0.85, 0.3).normalize();
     const sky = this.sky = new THREE.Mesh(
-      new THREE.SphereGeometry(800, 32, 16),
+      new THREE.SphereGeometry(1400, 48, 24),
       new THREE.ShaderMaterial({
         side: THREE.BackSide, depthWrite: false, fog: false,
         uniforms: {
-          top: { value: new THREE.Color('#3f9886') }, mid: { value: fogColor }, bottom: { value: new THREE.Color('#0a2a29') },
+          top: { value: new THREE.Color('#1d5a57') }, mid: { value: skyMid }, bottom: { value: new THREE.Color('#061416') },
           sunDir: { value: this.sunDir },
         },
         vertexShader: 'varying vec3 vDir; void main(){ vDir = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
         fragmentShader: `uniform vec3 top; uniform vec3 mid; uniform vec3 bottom; uniform vec3 sunDir; varying vec3 vDir;
-          void main(){ float h = vDir.y;
-            vec3 c = h > 0.0 ? mix(mid, top, smoothstep(0.0, 0.7, h)) : mix(mid, bottom, smoothstep(0.0, -0.25, h));
-            float s = max(dot(normalize(vDir), sunDir), 0.0);
-            c += vec3(0.5, 0.95, 0.78) * (pow(s, 6.0) * 0.35 + pow(s, 40.0) * 0.4);
+          void main(){ vec3 d = normalize(vDir); float h = d.y;
+            vec3 c = h > 0.0 ? mix(mid, top, smoothstep(0.0, 0.8, h)) : mix(mid, bottom, smoothstep(0.0, -0.6, h));
+            float s = max(dot(d, sunDir), 0.0);
+            c += vec3(0.55, 0.95, 0.8) * (pow(s, 5.0) * 0.28 + pow(s, 60.0) * 0.5);
+            float band = exp(-pow(dot(d, normalize(vec3(0.3, 0.2, -1.0))) * 2.2, 2.0));
+            c += vec3(0.08, 0.2, 0.18) * band * (0.6 + 0.4 * sin(d.x * 7.0 + d.y * 5.0));
             gl_FragColor = vec4(c, 1.0);
             #include <colorspace_fragment>
           }`,
@@ -300,13 +302,17 @@ export class Renderer3D {
     sky.renderOrder = -1;
     scene.add(sky);
 
-    scene.add(new THREE.HemisphereLight('#9fe6d2', '#103230', 1.1));
-    const sun = this.sun = new THREE.DirectionalLight('#eafff2', 2.0);
+    scene.add(new THREE.HemisphereLight('#a6f0dc', '#1d4a47', 1.2));
+    // A soft teal light from below so the island's underside is never black.
+    const under = new THREE.DirectionalLight('#6fd4c6', 1.8);
+    under.position.set(-0.4, -1, -0.3);
+    scene.add(under);
+    const sun = this.sun = new THREE.DirectionalLight('#eafff2', 2.2);
     sun.position.copy(this.sunDir).multiplyScalar(110);
     sun.castShadow = true;
     const shadowSize = renderer.capabilities.maxTextureSize >= 8192 ? 4096 : 2048;
     sun.shadow.mapSize.set(shadowSize, shadowSize);
-    const reach = world.W / 2 + 40;
+    const reach = world.W / 2 + 30;
     Object.assign(sun.shadow.camera, { left: -reach, right: reach, top: reach, bottom: -reach, near: 10, far: reach * 4 });
     sun.position.copy(this.sunDir).multiplyScalar(reach * 1.8);
     sun.shadow.bias = -0.0008;
@@ -345,8 +351,8 @@ export class Renderer3D {
     this.chunks = Array.from({ length: world.chunkCount }, () => [null, null, null, null]);
     this.chunkGlow = Array.from({ length: world.chunkCount }, () => ({ n: 0, x: 0, y: 0, z: 0 }));
 
-    this.buildDecor();
-    this.buildAtmosphere();
+    this.buildDiorama();
+    this.buildSkyDetails();
 
     // Outline of the slice the 2D view shows. It fades in when the slice moves.
     const sm = this.sliceMarker = new THREE.LineSegments(
@@ -383,76 +389,73 @@ export class Renderer3D {
     this.time = 0;
   }
 
-  buildDecor() {
-    const { ground, trees } = makeDecor(this.world);
+  // Mesh a decor voxel grid (all four material groups) into a group.
+  meshDecor(src, S, opts = {}) {
+    const group = new THREE.Group();
     const bufs = [new GeoBuf(), new GeoBuf(), new GeoBuf(), new GeoBuf()];
-    this.treeChunks = [];
-    for (const [src, S] of [[ground, 48], [trees, 16]]) {
-      for (let y = 0; y < src.H; y += S) for (let z = 0; z < src.D; z += S) for (let x = 0; x < src.W; x += S) {
-        meshBox(src, x, y, z, Math.min(src.W, x + S), Math.min(src.H, y + S), Math.min(src.D, z + S), bufs, null);
-        const geo = bufs[0].geometry();
+    for (let y = 0; y < src.H; y += S) for (let z = 0; z < src.D; z += S) for (let x = 0; x < src.W; x += S) {
+      meshBox(src, x, y, z, Math.min(src.W, x + S), Math.min(src.H, y + S), Math.min(src.D, z + S), bufs, null);
+      for (let g = 0; g < 4; g++) {
+        const geo = bufs[g].geometry();
         if (!geo) continue;
-        const m = new THREE.Mesh(geo, this.materials[0]);
-        const cx = x + S / 2 - src.W / 2, cz = z + S / 2 - src.D / 2;
-        const near = Math.hypot(cx, cz) < 110;
-        m.castShadow = near; m.receiveShadow = near;
-        m.matrixAutoUpdate = false;
-        this.scene.add(m);
-        if (src === trees) this.treeChunks.push({ mesh: m, x: cx, z: cz });
+        const m = new THREE.Mesh(geo, opts.material || this.materials[g]);
+        m.castShadow = !!opts.shadows && g === 0;
+        m.receiveShadow = !!opts.shadows && g !== 2;
+        group.add(m);
       }
     }
+    return group;
   }
 
-  // Hide background trees that stand between the camera and the play area.
-  hideBlockingTrees() {
-    const cam = this.camera.position, tgt = this.controls.target;
-    const dx = tgt.x - cam.x, dz = tgt.z - cam.z;
-    const len2 = dx * dx + dz * dz || 1;
-    for (const c of this.treeChunks) {
-      const t = ((c.x - cam.x) * dx + (c.z - cam.z) * dz) / len2;
-      let hide = false;
-      if (t > -0.35 && t < 0.8) {
-        const px = cam.x + dx * t - c.x, pz = cam.z + dz * t - c.z;
-        const reach = 26 + 34 * Math.max(0, 0.8 - t); // wider near the camera
-        hide = px * px + pz * pz < reach * reach;
-      }
-      c.mesh.visible = !hide;
-    }
-  }
-
-  buildAtmosphere() {
-    // Light shafts: crossed additive planes lined up with the sunlight.
-    const tex = shaftTexture();
-    const mat = shaftMaterial(tex);
-    const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), this.sunDir);
-    this.shafts = [];
-    const rand = rng(31);
+  // The floating island under the world, little islets around it and clouds below.
+  buildDiorama() {
+    const w = this.world;
+    this.scene.add(this.meshDecor(makeIsland(w), 32, { shadows: true }));
+    const rand = rng(404);
+    this.floaters = [];
     for (let k = 0; k < 7; k++) {
-      const g = new THREE.Group();
-      const w = 6 + rand() * 12;
-      for (let j = 0; j < 2; j++) {
-        const p = new THREE.Mesh(new THREE.PlaneGeometry(w, 190), mat.clone());
-        p.position.y = 95;
-        p.rotation.y = j * Math.PI / 2;
-        g.add(p);
-      }
-      g.quaternion.copy(q);
-      g.position.set((rand() - 0.5) * (this.world.W + 60), 0, (rand() - 0.5) * (this.world.D + 90));
-      g.userData.phase = rand() * 6.28;
-      this.shafts.push(g);
-      this.scene.add(g);
+      const islet = this.meshDecor(makeIslet(rand, 4 + ((rand() * 6) | 0)), 32);
+      const ang = (k / 7) * Math.PI * 2 + rand() * 0.5;
+      const rx = w.W * (0.72 + rand() * 0.3), rz = w.D * 1.4 + w.W * 0.25 * rand();
+      islet.position.set(Math.cos(ang) * rx, w.H * (-0.35 + rand() * 0.9), Math.sin(ang) * rz);
+      islet.rotation.y = rand() * Math.PI * 2;
+      this.floaters.push({ obj: islet, baseY: islet.position.y, phase: rand() * 6.28, spin: (rand() - 0.5) * 0.04, bob: 1.5 + rand() * 2 });
+      this.scene.add(islet);
     }
-    // Dust motes drifting through the light.
-    const n = 900;
-    const pos = new Float32Array(n * 3);
+    const cloudMat = new THREE.MeshLambertMaterial({ color: '#dff7f0', transparent: true, opacity: 0.32, depthWrite: false });
+    this.clouds = [];
+    for (let k = 0; k < 12; k++) {
+      const cloud = this.meshDecor(makeCloud(rand), 64, { material: cloudMat });
+      cloud.position.set((rand() - 0.5) * w.W * 2.4, -w.H * (0.75 + rand() * 0.6), (rand() - 0.5) * w.W * 1.6);
+      cloud.scale.setScalar(1 + rand() * 1.2);
+      cloud.rotation.y = rand() * Math.PI;
+      this.clouds.push({ obj: cloud, speed: 1.5 + rand() * 2.5 });
+      this.scene.add(cloud);
+    }
+  }
+
+  // Stars far away and dust motes floating around the island.
+  buildSkyDetails() {
+    const w = this.world, rand = rng(31);
+    const n = 1800, pos = new Float32Array(n * 3);
     for (let i = 0; i < n; i++) {
-      pos[i * 3] = (rand() - 0.5) * (this.world.W + 50); pos[i * 3 + 1] = rand() * 70; pos[i * 3 + 2] = (rand() - 0.5) * (this.world.D + 70);
+      const u = rand() * 2 - 1, a = rand() * Math.PI * 2, r = Math.sqrt(1 - u * u);
+      pos[i * 3] = Math.cos(a) * r * 1200; pos[i * 3 + 1] = u * 1200; pos[i * 3 + 2] = Math.sin(a) * r * 1200;
     }
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-    this.dust = new THREE.Points(geo, new THREE.PointsMaterial({
-      color: '#d9fff0', size: 0.32, transparent: true, opacity: 0.6, depthWrite: false, blending: THREE.AdditiveBlending,
+    const sg = new THREE.BufferGeometry();
+    sg.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    this.stars = new THREE.Points(sg, new THREE.PointsMaterial({ color: '#d6fff2', size: 1.6, sizeAttenuation: false, transparent: true, opacity: 0.75, depthWrite: false, fog: false }));
+    this.scene.add(this.stars);
+    const m = 900, dp = new Float32Array(m * 3);
+    for (let i = 0; i < m; i++) {
+      dp[i * 3] = (rand() - 0.5) * w.W * 1.6; dp[i * 3 + 1] = -w.H * 0.6 + rand() * w.H * 1.6; dp[i * 3 + 2] = (rand() - 0.5) * (w.D + w.W * 0.6);
+    }
+    const dg = new THREE.BufferGeometry();
+    dg.setAttribute('position', new THREE.BufferAttribute(dp, 3));
+    this.dust = new THREE.Points(dg, new THREE.PointsMaterial({
+      color: '#d9fff0', size: 0.4, transparent: true, opacity: 0.55, depthWrite: false, blending: THREE.AdditiveBlending,
     }));
+    this.dustTop = w.H * 1.0; this.dustBottom = -w.H * 0.6;
     this.scene.add(this.dust);
   }
 
@@ -471,6 +474,12 @@ export class Renderer3D {
     this.composer.setSize(w, h);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
+    // Pull the starting view back far enough that the whole island fits the screen.
+    const vHalf = THREE.MathUtils.degToRad(this.camera.fov / 2);
+    const hHalf = Math.atan(Math.tan(vHalf) * this.camera.aspect);
+    const dist = Math.max(this.world.W * 1.25, (this.world.W * 0.62) / Math.tan(hHalf));
+    this.home.pos.copy(this.home.target).addScaledVector(this.homeDir, dist);
+    if (!this.userMoved) { this.camera.position.copy(this.home.pos); this.controls.update(); }
   }
 
   rebuildAll() { this.world.dirty.fill(1); }
@@ -554,6 +563,7 @@ export class Renderer3D {
   }
 
   resetView() {
+    this.userMoved = false;
     this.camera.position.copy(this.home.pos);
     this.controls.target.copy(this.home.target);
     this.controls.update();
@@ -620,26 +630,32 @@ export class Renderer3D {
     this.time += dt;
     this.updateChunks(simulating ? 5 : 10);
     this.controls.update();
-    this.hideBlockingTrees();
     this.sky.position.copy(this.camera.position);
+    this.stars.position.copy(this.camera.position);
+    // Islets bob and turn slowly; clouds drift past underneath.
+    for (const f of this.floaters) {
+      f.obj.position.y = f.baseY + Math.sin(this.time * 0.35 + f.phase) * f.bob;
+      f.obj.rotation.y += f.spin * dt;
+    }
+    const span = this.world.W * 1.2;
+    for (const c of this.clouds) {
+      c.obj.position.x += c.speed * dt;
+      if (c.obj.position.x > span) c.obj.position.x -= span * 2;
+    }
     const sm = this.sliceMarker;
     this.sliceFade = Math.max(0, this.sliceFade - dt);
     sm.visible = this.sliceFade > 0;
-    sm.material.opacity = Math.min(1, this.sliceFade) * 0.7;
+    sm.material.opacity = Math.min(1, this.sliceFade) * 0.45;
     const g = this.glowLight;
     // The glow from lava and fire eases toward its new strength and place, so
     // the scene lighting never flickers from frame to frame.
     const ease = 1 - Math.exp(-dt * 4);
     g.intensity += ((this.glowTarget || 0) - g.intensity) * ease;
     if (this.glowPos) g.position.lerp(this.glowPos, ease);
-    for (const s of this.shafts) {
-      const o = 0.08 + 0.04 * Math.sin(this.time * 0.4 + s.userData.phase);
-      for (const p of s.children) p.material.uniforms.opacity.value = o;
-    }
     const pos = this.dust.geometry.attributes.position;
     for (let i = 0; i < pos.count; i++) {
       let y = pos.array[i * 3 + 1] + dt * (0.6 + (i % 7) * 0.08);
-      if (y > 70) y = 0;
+      if (y > this.dustTop) y = this.dustBottom;
       pos.array[i * 3 + 1] = y;
       pos.array[i * 3] += Math.sin(this.time * 0.5 + i) * dt * 0.3;
     }
