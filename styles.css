@@ -632,6 +632,52 @@ kbd {
   .panel { padding: 22px 18px 20px; }
 }
 
+/* ---------- fly mode ---------- */
+.app[data-input="touch"] .mouse-only { display: none; }
+.crosshair {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 4;
+  width: 22px;
+  height: 22px;
+  margin: -11px 0 0 -11px;
+  pointer-events: none;
+  background:
+    linear-gradient(#fff, #fff) center / 2px 22px no-repeat,
+    linear-gradient(#fff, #fff) center / 22px 2px no-repeat;
+  filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.9)) drop-shadow(0 0 2px rgba(0, 0, 0, 0.5));
+}
+.fly-hint {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 74px;
+  width: max-content;
+  max-width: calc(100% - 28px);
+  margin-inline: auto;
+  z-index: 5;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 4px 12px;
+  padding: 8px 14px;
+  border-radius: 12px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  font-size: 12px;
+  color: var(--muted);
+  pointer-events: none;
+}
+.fly-hint b { color: var(--accent); font: 600 13px/1 var(--font-display); }
+.fly-hint kbd { padding: 0 4px; font-size: 10px; }
+.fly-hint .lock { color: var(--text); }
+.app[data-fly="on"] .view3d { cursor: none; }
+.app[data-fly="on"] .coach { display: none; }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }

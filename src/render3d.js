@@ -562,8 +562,70 @@ export class Renderer3D {
     c.update();
   }
 
+  // ----- fly mode: a free first-person camera for building -----
+  setFly(on) {
+    if (on === !!this.fly) return;
+    this.fly = on;
+    this.controls.enabled = !on;
+    const cam = this.camera;
+    if (on) {
+      const dir = new THREE.Vector3();
+      cam.getWorldDirection(dir);
+      this.yaw = Math.atan2(-dir.x, -dir.z);
+      this.pitch = Math.asin(Math.max(-1, Math.min(1, dir.y)));
+      this.flyVel = new THREE.Vector3();
+      this.flyHeld = 0;
+      this.controls.autoRotate = false;
+    } else {
+      // Hand back to the orbit camera, circling a point just ahead of us.
+      const dir = new THREE.Vector3();
+      cam.getWorldDirection(dir);
+      const hit = this.pickCenter();
+      const dist = hit && hit.hit ? Math.max(20, cam.position.distanceTo(this.cellCenter(hit.hit))) : 60;
+      this.controls.target.copy(cam.position).addScaledVector(dir, dist);
+      this.userMoved = true;
+      this.controls.update();
+    }
+  }
+
+  // Turn the head by a mouse movement in pixels.
+  look(dx, dy) {
+    this.yaw -= dx * 0.0022;
+    this.pitch = Math.max(-1.55, Math.min(1.55, this.pitch - dy * 0.0022));
+  }
+
+  // move: { f, r, u } in -1..1 (forward, right, up), from the keys held.
+  flyStep(dt, move) {
+    const cam = this.camera;
+    const sy = Math.sin(this.yaw), cy = Math.cos(this.yaw);
+    const want = new THREE.Vector3(
+      -sy * move.f + cy * move.r,
+      move.u,
+      -cy * move.f - sy * move.r);
+    const moving = want.lengthSq() > 0;
+    // The longer you hold a direction, the faster you go.
+    this.flyHeld = moving ? Math.min(this.flyHeld + dt, 2) : 0;
+    const speed = 18 + 55 * Math.min(1, this.flyHeld / 1.5);
+    if (moving) want.normalize().multiplyScalar(speed);
+    this.flyVel.lerp(want, 1 - Math.exp(-dt * 10));
+    cam.position.addScaledVector(this.flyVel, dt);
+    const lim = this.world.W * 2.5;
+    cam.position.clampScalar(-lim, lim);
+    cam.rotation.set(this.pitch, this.yaw, 0, 'YXZ');
+  }
+
+  pickCenter() {
+    const r = this.canvas.getBoundingClientRect();
+    return this.pick(r.left + r.width / 2, r.top + r.height / 2);
+  }
+
+  cellCenter(c) {
+    return new THREE.Vector3(c[0] - this.world.W / 2 + 0.5, c[1] + 0.5, c[2] - this.world.D / 2 + 0.5);
+  }
+
   // Move the camera toward (factor > 1) or away from the point it circles.
   zoom(factor) {
+    if (this.fly) return;
     const c = this.controls, off = this.camera.position.clone().sub(c.target);
     const len = Math.max(c.minDistance, Math.min(c.maxDistance, off.length() / factor));
     this.camera.position.copy(c.target).add(off.setLength(len));
@@ -638,7 +700,7 @@ export class Renderer3D {
   render(dt, simulating) {
     this.time += dt;
     this.updateChunks(simulating ? 5 : 10);
-    this.controls.update();
+    if (!this.fly) this.controls.update();
     this.sky.position.copy(this.camera.position);
     this.stars.position.copy(this.camera.position);
     // Islets bob and turn slowly; clouds drift past underneath.

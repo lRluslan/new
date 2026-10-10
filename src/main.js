@@ -43,14 +43,18 @@ const state = {
   selected: { kind: 'el', id: El.SAND },
   paused: false,
   speed: store.get('speed', 1),
-  brush: { '2d': 4, '3d': 3 },
+  brush: { '2d': 4, '3d': 3, fly: 0 },
   thermal: false,
   painting: null,     // 'add' | 'erase' | 'heat' | 'cool' while a button is held
   pointer: null,      // last pointer position over the stage
   lastCell: null,
   stepOnce: false,
   acc: 0,
+  fly: false,         // 3D free camera
+  locked: false,      // mouse captured for looking around
+  noLock: false,      // this page cannot capture the mouse: drag to look instead
 };
+const keysDown = new Set();
 
 // ----- discoveries -----
 const found = new Set(store.get('found', []).filter(id => El.DISCOVERY_BY_ID[id]));
@@ -155,15 +159,18 @@ function select(sel) {
 
 // ----- controls -----
 const brushInput = $('#brush'), brushOut = $('#brush-out');
-const BRUSH_MAX = { '2d': 16, '3d': 8 };
+// Separate brush sizes for 2D, the 3D orbit view and fly mode (where a
+// size of 0 means one block at a time, like a creative-mode builder).
+const BRUSH_MAX = { '2d': 16, '3d': 8, fly: 8 };
+const brushKey = () => (state.fly ? 'fly' : state.mode);
 function syncBrush() {
-  const max = BRUSH_MAX[state.mode];
-  brushInput.min = state.mode === '2d' ? 1 : 0;
-  brushInput.max = max;
-  brushInput.value = state.brush[state.mode];
-  brushOut.textContent = state.brush[state.mode];
+  const key = brushKey();
+  brushInput.min = key === '2d' ? 1 : 0;
+  brushInput.max = BRUSH_MAX[key];
+  brushInput.value = state.brush[key];
+  brushOut.textContent = state.brush[key];
 }
-brushInput.addEventListener('input', () => { state.brush[state.mode] = +brushInput.value; brushOut.textContent = brushInput.value; });
+brushInput.addEventListener('input', () => { state.brush[brushKey()] = +brushInput.value; brushOut.textContent = brushInput.value; });
 
 function setSpeed(s) {
   state.speed = s;
@@ -291,6 +298,7 @@ function notice(text) {
 // ----- mode switching -----
 async function setMode(mode) {
   if (mode === state.mode && (mode === '2d' || r3d)) return;
+  if (mode === '2d' && state.fly) setFly(false);
   if (mode === '3d' && !r3d) {
     if (!loading3d) loading3d = load3d();
     $('#loading').hidden = false;
@@ -386,18 +394,131 @@ const stopPaint = () => { state.painting = null; state.lastCell = null; };
 window.addEventListener('pointerup', stopPaint);
 window.addEventListener('pointercancel', stopPaint);
 
+let dragLook = null; // fly mode without mouse capture: left-drag looks, a click places
 function attach3dInput(canvas) {
   canvas.addEventListener('contextmenu', e => e.preventDefault());
   canvas.addEventListener('pointerdown', e => {
     state.pointer = { x: e.clientX, y: e.clientY };
+    if (state.fly) { flyPointerDown(e); return; }
     if (e.button !== 0) return;
     if (e.pointerType === 'touch' && !e.isPrimary) { stopPaint(); return; }
     state.painting = modeForButton(0);
     dismissCoach();
   });
-  canvas.addEventListener('pointermove', e => { state.pointer = { x: e.clientX, y: e.clientY }; });
+  canvas.addEventListener('pointermove', e => {
+    state.pointer = { x: e.clientX, y: e.clientY };
+    if (!state.fly) return;
+    if (state.locked) r3d.look(e.movementX, e.movementY);
+    else if (dragLook) {
+      r3d.look(e.clientX - dragLook.x, e.clientY - dragLook.y);
+      dragLook.moved += Math.abs(e.clientX - dragLook.x) + Math.abs(e.clientY - dragLook.y);
+      dragLook.x = e.clientX; dragLook.y = e.clientY;
+    }
+  });
+  canvas.addEventListener('pointerup', e => {
+    if (dragLook && e.button === 0) {
+      if (dragLook.moved < 6) flyAct(modeForButton(0), true); // a click, not a drag: place once
+      dragLook = null;
+    }
+  });
   canvas.addEventListener('pointerleave', () => { if (!state.painting) state.pointer = null; });
 }
+
+// ----- fly mode -----
+function setFly(on) {
+  if (on && (state.mode !== '3d' || !r3d)) return;
+  if (on === state.fly) return;
+  state.fly = on;
+  app.dataset.fly = on ? 'on' : 'off';
+  keysDown.clear();
+  stopPaint();
+  r3d.setFly(on);
+  r3d.setAccent(on ? '#ffffff' : '#7ff0d0');
+  $('#btn-fly').setAttribute('aria-pressed', String(on));
+  syncBrush();
+  if (on) { captureMouse(); dismissCoach(); }
+  else if (document.pointerLockElement) document.exitPointerLock();
+  updateFlyHint();
+}
+
+function captureMouse() {
+  if (state.noLock || !r3d) return;
+  try {
+    const p = r3d.canvas.requestPointerLock();
+    if (p && p.catch) p.catch(lockFailed);
+  } catch { lockFailed(); }
+}
+function lockFailed() {
+  if (state.noLock) return;
+  state.noLock = true;
+  updateFlyHint();
+}
+document.addEventListener('pointerlockchange', () => {
+  state.locked = !!r3d && document.pointerLockElement === r3d.canvas;
+  if (!state.locked) stopPaint();
+  updateFlyHint();
+});
+document.addEventListener('pointerlockerror', lockFailed);
+
+function updateFlyHint() {
+  $('#crosshair').hidden = !state.fly;
+  $('#fly-hint').hidden = !state.fly;
+  $('#fly-lock').textContent = state.noLock
+    ? 'Drag with the left mouse button to look around.'
+    : state.locked ? 'Esc frees the mouse.' : 'Click to look around.';
+}
+
+function flyPointerDown(e) {
+  e.preventDefault();
+  if (!state.locked && !state.noLock) { captureMouse(); return; } // first click captures the mouse
+  if (e.button === 1) { pickAimed(); return; }
+  if (e.button === 2) { flyAct('erase', true); state.painting = 'erase'; return; }
+  if (e.button !== 0) return;
+  if (state.noLock) { dragLook = { x: e.clientX, y: e.clientY, moved: 0 }; return; }
+  const mode = modeForButton(0);
+  flyAct(mode, true);
+  state.painting = mode;
+}
+
+// Middle click: pick up the element you are looking at.
+function pickAimed() {
+  const p = r3d.pickCenter();
+  if (!p || !p.hit) return;
+  const t = world.type[world.index(p.hit[0], p.hit[1], p.hit[2])];
+  if (elButtons.has('el:' + t)) select({ kind: 'el', id: t });
+}
+
+// Place, remove, heat or cool at the crosshair. Blocks go on the face you aim at.
+let lastFlyAct = 0;
+function flyAct(mode, now) {
+  const t0 = performance.now();
+  const repeat = mode === 'heat' || mode === 'cool' ? 0 : 140;
+  if (!now && t0 - lastFlyAct < repeat) return;
+  lastFlyAct = t0;
+  const p = r3d.pickCenter();
+  if (!p) return;
+  const target = mode === 'add' ? p.place : (p.hit || p.place);
+  if (!target) return;
+  const r = state.brush.fly + 0.5;
+  const t = state.selected.kind === 'el' ? state.selected.id : 0;
+  world.paint(target[0], target[1], target[2], r, mode, t, r, 9); // full blocks, not a sprinkle
+}
+
+function paintFly(dt) {
+  const f = (keysDown.has('KeyW') ? 1 : 0) - (keysDown.has('KeyS') ? 1 : 0);
+  const rr = (keysDown.has('KeyD') ? 1 : 0) - (keysDown.has('KeyA') ? 1 : 0);
+  const u = (keysDown.has('Space') ? 1 : 0) - (keysDown.has('ShiftLeft') || keysDown.has('ShiftRight') ? 1 : 0);
+  r3d.flyStep(dt, { f, r: rr, u });
+  const p = r3d.pickCenter();
+  r3d.showCursor(p ? (p.hit || p.place) : null, state.brush.fly);
+  if (state.painting) flyAct(state.painting, false);
+  const look = p && (p.hit || p.place);
+  return look ? world.index(look[0], look[1], look[2]) : null;
+}
+$('#btn-fly').addEventListener('click', () => setFly(!state.fly));
+const FLY_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'Space', 'ShiftLeft', 'ShiftRight']);
+window.addEventListener('keyup', e => keysDown.delete(e.code));
+window.addEventListener('blur', () => keysDown.clear());
 
 // The 2D brush paints into the shared grid as a thin disc through the
 // current slice (5 cells deep), so it shows up as a solid shape in 3D.
@@ -442,6 +563,11 @@ window.addEventListener('keydown', e => {
   if (e.target instanceof HTMLInputElement && e.target.type !== 'range') return;
   if (e.metaKey || e.ctrlKey || e.altKey) return;
   const k = e.key.toLowerCase();
+  if (state.mode === '3d' && e.code === 'Tab') { e.preventDefault(); setFly(!state.fly); return; }
+  if (state.fly) {
+    if (FLY_KEYS.has(e.code)) { e.preventDefault(); keysDown.add(e.code); return; }
+    if (k === 'r' || k === 'c') return; // no accidental resets while flying
+  }
   if (k === 'escape') { closePanels(); return; }
   if (k === ' ') { e.preventDefault(); setPaused(!state.paused); return; }
   if (k === '.') { setPaused(true); state.stepOnce = true; return; }
@@ -461,8 +587,8 @@ window.addEventListener('keydown', e => {
   }
   if (k === '[' || k === ']') {
     const d = k === '[' ? -1 : 1;
-    const max = BRUSH_MAX[state.mode], min = state.mode === '2d' ? 1 : 0;
-    state.brush[state.mode] = Math.max(min, Math.min(max, state.brush[state.mode] + d));
+    const key = brushKey(), max = BRUSH_MAX[key], min = key === '2d' ? 1 : 0;
+    state.brush[key] = Math.max(min, Math.min(max, state.brush[key] + d));
     syncBrush();
     return;
   }
@@ -474,6 +600,13 @@ window.addEventListener('keydown', e => {
 // Scroll zooms the 2D view toward the mouse (the 3D camera handles its own
 // scroll zoom). Shift + scroll changes the brush size instead.
 stage.addEventListener('wheel', e => {
+  if (state.fly) {
+    e.preventDefault();
+    const d = (e.deltaY || e.deltaX) > 0 ? -1 : 1;
+    state.brush.fly = Math.max(0, Math.min(BRUSH_MAX.fly, state.brush.fly + d));
+    syncBrush();
+    return;
+  }
   if (state.mode !== '2d') return;
   e.preventDefault();
   if (e.shiftKey) {
@@ -540,7 +673,7 @@ function frame(now) {
   const dt = Math.min(0.1, (now - last) / 1000);
   last = now;
   const is2d = state.mode === '2d' || !r3d;
-  const hover = is2d ? paint2d() : paint3d();
+  const hover = is2d ? paint2d() : state.fly ? paintFly(dt) : paint3d();
   if (!state.paused) {
     state.acc += dt * state.speed * RATE;
     // At most 3 steps, and stop early if this frame's simulation time runs

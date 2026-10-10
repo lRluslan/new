@@ -115,6 +115,20 @@ GitHub Pages is free for public projects. For a private project it needs a paid 
 | Zoom | Scroll wheel or pinch (zooms toward the mouse), `+` and `−` keys | Scroll wheel or pinch, `+` and `−` keys |
 | Move around | Middle-drag, or drag with two fingers | Middle-drag |
 | Brush size | Shift + scroll, or the `[` and `]` keys | `[` and `]` keys |
+
+**Fly mode (3D, like creative mode in block games).** Press **Tab** (or the
+**Fly** button) to switch between the orbit view and a free camera:
+
+- Move the mouse to look around. The first click captures the mouse; **Esc** frees it.
+- **W A S D** move, **Space** flies up, **Shift** flies down. You speed up the longer you hold a direction,
+  and you can fly anywhere, even through the ground.
+- A crosshair shows where you aim, and the block under it is outlined.
+- **Left click** places the selected element against the face you aim at, **right click** removes,
+  **middle click** picks up the element you aim at. Hold a button to keep building.
+- **Scroll** (or `[` and `]`) sets the size: 0 means one block at a time.
+- **Tab** goes back to the orbit view, looking at where you were.
+
+If the page is not allowed to capture the mouse (some embedded pages), drag with the left mouse button to look around instead, and click without dragging to place.
 | Touch | Drag a finger to paint | One finger paints, two fingers turn and zoom |
 
 Everywhere:

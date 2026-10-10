@@ -132,6 +132,10 @@
         <svg viewBox="0 0 16 16" aria-hidden="true"><ellipse cx="8" cy="8" rx="6" ry="2.6" fill="none" stroke="currentColor" stroke-width="1.4"/><circle cx="8" cy="8" r="1.6" fill="currentColor"/></svg>
         Orbit
       </button>
+      <button type="button" class="toggle only-3d mouse-only" id="btn-fly" aria-pressed="false" title="Fly through the world like in creative mode (Tab)">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5 13.5 8 8 13.5 2.5 8z" fill="none" stroke="currentColor" stroke-width="1.4"/><circle cx="8" cy="8" r="1.5" fill="currentColor"/></svg>
+        Fly
+      </button>
       <button type="button" class="toggle" id="btn-view" title="Reset zoom and camera">View</button>
       <div class="seg pixel only-3d" role="group" aria-label="Pixel size">
         <button type="button" data-pixel="1" aria-pressed="false" title="Sharp">1px</button>
@@ -139,6 +143,13 @@
         <button type="button" data-pixel="3" aria-pressed="false" title="Chunky">3px</button>
       </div>
       <span class="fps" id="fps" aria-hidden="true"></span>
+    </div>
+
+    <div class="crosshair" id="crosshair" hidden aria-hidden="true"></div>
+    <div class="fly-hint" id="fly-hint" hidden>
+      <b>Fly mode</b>
+      <span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move · <kbd>Space</kbd> up · <kbd>Shift</kbd> down · left place · right remove · middle pick · scroll brush · <kbd>Tab</kbd> orbit view</span>
+      <span class="lock" id="fly-lock">Click to look around.</span>
     </div>
 
     <div class="loading" id="loading" hidden>
@@ -175,6 +186,7 @@
             <li><kbd>Right-drag</kbd> turn around the island (top, sides, underneath)</li>
             <li><kbd>Scroll</kbd> zoom · <kbd>Middle-drag</kbd> pan</li>
             <li><kbd>A</kbd> <kbd>D</kbd> orbit · two fingers on touch</li>
+            <li><kbd>Tab</kbd> fly mode: mouse looks, <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move, <kbd>Space</kbd>/<kbd>Shift</kbd> up/down</li>
           </ul>
         </div>
         <div>
