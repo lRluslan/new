@@ -16,7 +16,7 @@ export function rng(seed) {
 }
 
 // Size of the shared world, in cells: wide, fairly tall and moderately deep.
-export const WORLD_SIZE = { W: 160, H: 90, D: 48 };
+export const WORLD_SIZE = { W: 256, H: 112, D: 64 };
 
 // Rolling soil height before the pond is dug. The 3D backdrop continues the
 // same hills outside the play area.
@@ -122,16 +122,20 @@ export function autumnGlade(w) {
   // The two big trees sit on the middle slice; the rest fill the depth.
   tree(w, Math.round(W * 0.17), zs, g(W * 0.17, zs), Math.round(H * 0.36), Math.round(H * 0.13), rand);
   tree(w, Math.round(W * 0.92), zs, g(W * 0.92, zs), Math.round(H * 0.28), Math.round(H * 0.1), rand);
-  for (const [fx, z, hf, cf] of [[0.36, 8, 0.3, 0.1], [0.08, 40, 0.26, 0.09], [0.55, 42, 0.24, 0.08], [0.82, 6, 0.27, 0.09]]) {
-    const x = Math.round(W * fx);
+  // Positions in depth are fractions of D, so the scene fits any world size.
+  const Z = f => Math.round(D * f);
+  for (const [fx, fz, hf, cf] of [[0.36, 0.15, 0.3, 0.1], [0.08, 0.82, 0.26, 0.09], [0.55, 0.86, 0.24, 0.08], [0.82, 0.12, 0.27, 0.09],
+    [0.27, 0.85, 0.22, 0.08], [0.68, 0.14, 0.25, 0.09], [0.97, 0.8, 0.22, 0.08]]) {
+    const x = Math.round(W * fx), z = Z(fz);
     tree(w, x, z, g(x, z), Math.round(H * hf), Math.round(H * cf), rand);
   }
-  for (const [fx, z] of [[0.04, zs], [0.3, zs + 1], [0.38, zs - 1], [0.84, zs], [0.22, 34], [0.47, 12], [0.7, 44], [0.95, 38], [0.15, 6]]) {
-    const x = Math.round(W * fx);
+  for (const [fx, fz] of [[0.04, 0.5], [0.3, 0.52], [0.38, 0.48], [0.84, 0.5], [0.22, 0.7], [0.47, 0.25], [0.7, 0.92],
+    [0.95, 0.78], [0.15, 0.12], [0.6, 0.3], [0.12, 0.62], [0.88, 0.3]]) {
+    const x = Math.round(W * fx), z = Z(fz);
     blob(w, x, g(x, z) + 2, z, 5 + rand() * 3, 3.5 + rand() * 1.5, 4 + rand() * 2, PLANT, rand, 0.4);
   }
-  for (const [fx, z] of [[0.27, zs], [0.8, zs + 1], [0.6, 6], [0.42, 38]]) {
-    const x = Math.round(W * fx);
+  for (const [fx, fz] of [[0.27, 0.5], [0.8, 0.52], [0.6, 0.12], [0.42, 0.8], [0.06, 0.3]]) {
+    const x = Math.round(W * fx), z = Z(fz);
     blob(w, x, g(x, z), z, 3, 2.2, 2.6, STONE, rand, 0.2);
   }
 }

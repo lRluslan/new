@@ -68,7 +68,7 @@ export const DISCOVERIES = [
 // stays at 0 °C while melting and water stays at 100 °C while boiling.
 // ignite/burn: [burn time, flame temperature, chance of leaving ash].
 // c2: 2D palette (warm autumn). c3: 3D palette (teal forest).
-// group3: 0 opaque, 1 see-through, 2 glowing. a3: 3D opacity.
+// group3: 0 opaque, 1 see-through, 2 glowing, 3 drifting gas. a3: 3D opacity.
 const DEFS = [];
 function def(id, d) { DEFS[id] = d; }
 
@@ -129,11 +129,11 @@ def(LAVA, { name: 'Lava', cat: 'liquid', state: LIQUID, density: 2700, k: 0.16, 
 def(STEAM, { name: 'Steam', cat: 'gas', state: GAS, density: 0.6, k: 0.04, c: 0.4, temp: 110, life: [500, 900],
   rise: 0.75, cold: [96, WATER, DISC.RAIN], hard: 0,
   desc: 'Hot water vapour. Rises, cools and falls as rain.',
-  c2: ['#eef3ee', '#e2ebe6', '#f8faf6', '#d6e2dd'], c3: ['#e6f5f2', '#d8ece8', '#f2fbf9', '#cbe3de'], group3: 1, a3: 0.3 });
+  c2: ['#eef3ee', '#e2ebe6', '#f8faf6', '#d6e2dd'], c3: ['#e6f5f2', '#d8ece8', '#f2fbf9', '#cbe3de'], group3: 3, a3: 0.3 });
 
 def(SMOKE, { name: 'Smoke', cat: 'gas', state: GAS, density: 1.0, k: 0.03, c: 0.3, life: [90, 220], rise: 0.5, hard: 0,
   desc: 'Soot carried up by hot air. Fades away over time.',
-  c2: ['#4b4740', '#56514a', '#423e38', '#5f5a52'], c3: ['#8a9794', '#7d8a87', '#96a3a0', '#71807c'], group3: 1, a3: 0.42 });
+  c2: ['#4b4740', '#56514a', '#423e38', '#5f5a52'], c3: ['#8a9794', '#7d8a87', '#96a3a0', '#71807c'], group3: 3, a3: 0.42 });
 
 def(FIRE, { name: 'Fire', cat: 'gas', state: GAS, density: 0.4, k: 0.2, c: 0.05, temp: FIRE_TEMP, life: [18, 42],
   rise: 0.7, hard: 0, glow: true,

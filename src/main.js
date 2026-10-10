@@ -43,7 +43,7 @@ const state = {
   selected: { kind: 'el', id: El.SAND },
   paused: false,
   speed: store.get('speed', 1),
-  brush: { '2d': 3, '3d': 2 },
+  brush: { '2d': 4, '3d': 3 },
   thermal: false,
   painting: null,     // 'add' | 'erase' | 'heat' | 'cool' while a button is held
   pointer: null,      // last pointer position over the stage
@@ -155,7 +155,7 @@ function select(sel) {
 
 // ----- controls -----
 const brushInput = $('#brush'), brushOut = $('#brush-out');
-const BRUSH_MAX = { '2d': 12, '3d': 6 };
+const BRUSH_MAX = { '2d': 16, '3d': 8 };
 function syncBrush() {
   const max = BRUSH_MAX[state.mode];
   brushInput.min = state.mode === '2d' ? 1 : 0;

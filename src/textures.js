@@ -5,7 +5,9 @@
 import * as El from './elements.js';
 import { rng } from './scenes.js';
 
-export const TILE = 16, COLS = 8, ROWS = 3;
+// Each 16×16 tile sits in a 32×32 cell, surrounded by repeats of itself, so
+// the smaller mipmap levels never blend in a neighbouring tile.
+export const TILE = 16, PAD = 8, CELL = TILE + 2 * PAD, COLS = 8, ROWS = 4;
 
 const T = {
   stone: 0, dirt: 1, grassTop: 2, grassSide: 3, sand: 4, snow: 5, ash: 6, gunpowder: 7,
@@ -145,7 +147,7 @@ let cachedAtlas = null;
 export function buildAtlas() {
   if (cachedAtlas) return cachedAtlas;
   const canvas = document.createElement('canvas');
-  canvas.width = COLS * TILE; canvas.height = ROWS * TILE;
+  canvas.width = COLS * CELL; canvas.height = ROWS * CELL;
   const ctx = canvas.getContext('2d');
   const img = ctx.createImageData(canvas.width, canvas.height);
   const rand = rng(1234);
@@ -179,9 +181,11 @@ export function buildAtlas() {
   };
   for (const [tileStr, fn] of Object.entries(fns)) {
     const tile = +tileStr;
-    const ox = (tile % COLS) * TILE, oy = Math.floor(tile / COLS) * TILE;
-    for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
-      const c = fn(x, y);
+    const ox = (tile % COLS) * CELL, oy = Math.floor(tile / COLS) * CELL;
+    const px = [];
+    for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) px.push(fn(x, y));
+    for (let y = 0; y < CELL; y++) for (let x = 0; x < CELL; x++) {
+      const c = px[((y - PAD + TILE) % TILE) * TILE + ((x - PAD + TILE) % TILE)];
       const o = ((oy + y) * canvas.width + ox + x) * 4;
       img.data[o] = Math.max(0, Math.min(255, c[0]));
       img.data[o + 1] = Math.max(0, Math.min(255, c[1]));
@@ -200,7 +204,7 @@ export function drawSwatch(canvas, t, mode) {
   if (mode === '3d') {
     canvas.width = TILE; canvas.height = TILE;
     const tile = tileFor(t, 0, t === El.DIRT);
-    ctx.drawImage(buildAtlas(), (tile % COLS) * TILE, Math.floor(tile / COLS) * TILE, TILE, TILE, 0, 0, TILE, TILE);
+    ctx.drawImage(buildAtlas(), (tile % COLS) * CELL + PAD, Math.floor(tile / COLS) * CELL + PAD, TILE, TILE, 0, 0, TILE, TILE);
     return;
   }
   const S = 10;

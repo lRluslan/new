@@ -10,7 +10,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import * as El from './elements.js';
-import { buildAtlas, tileFor, COLS, ROWS } from './textures.js';
+import { buildAtlas, tileFor, COLS, ROWS, TILE, PAD, CELL } from './textures.js';
 import { rng, groundHeight } from './scenes.js';
 
 const { EMPTY, DIRT, WOOD, PLANT, STONE, WATER, STATE, GAS, GROUP3, ALPHA3, OCCLUDES, GLOWS } = El;
@@ -36,7 +36,21 @@ for (const f of FACES) {
   });
 }
 const AO_LEVEL = [1, 0.8, 0.64, 0.5];
-const UV_INSET = 0.5 / 16;
+const ATLAS_W = COLS * CELL, ATLAS_H = ROWS * CELL;
+
+// Where two different see-through materials touch, only one of them draws
+// the shared face; drawing both puts two faces on one plane, which flickers.
+const FACE_RANK = new Uint8Array(El.COUNT);
+for (let t = 1; t < El.COUNT; t++) FACE_RANK[t] = GROUP3[t] === 3 ? 1 : 2;
+const ownsFace = (t, nt) => nt === EMPTY || FACE_RANK[t] > FACE_RANK[nt] || (FACE_RANK[t] === FACE_RANK[nt] && t > nt);
+
+// Fixed brightness variation per voxel, from its position only, so a voxel's
+// colour never changes unless the voxel itself changes.
+function tintAt(x, y, z) {
+  let h = Math.imul(x | 0, 73856093) ^ Math.imul(y | 0, 19349663) ^ Math.imul(z | 0, 83492791);
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  return 0.93 + (((h ^ (h >>> 16)) >>> 0) / 4294967296) * 0.1;
+}
 
 class GeoBuf {
   constructor() { this.cap = 0; this.grow(4096); this.reset(); }
@@ -60,9 +74,9 @@ class GeoBuf {
 }
 
 // Build meshes for the box [x0,x1)×[y0,y1)×[z0,z1) of a voxel grid.
-// src: { W, H, D, type, shade, ox, oy, oz } (offsets place it in the world).
+// src: { W, H, D, type, ox, oy, oz } (offsets place it in the world).
 function meshBox(src, x0, y0, z0, x1, y1, z1, bufs, stats) {
-  const { W, H, D, type, shade } = src;
+  const { W, H, D, type } = src;
   const L = W * D;
   for (const b of bufs) b.reset();
   const solidAt = (x, y, z) => (x < 0 || y < 0 || z < 0 || x >= W || y >= H || z >= D) ? 0 : OCCLUDES[type[x + W * (z + D * y)]];
@@ -74,7 +88,7 @@ function meshBox(src, x0, y0, z0, x1, y1, z1, bufs, stats) {
     if (GLOWS[t] && stats) { stats.n++; stats.x += x; stats.y += y; stats.z += z; }
     const above = y < H - 1 ? type[i + L] : EMPTY;
     const grassy = t === DIRT && !OCCLUDES[above] && above !== WATER;
-    const tint = 0.88 + (shade[i] / 255) * 0.16;
+    const tint = tintAt(x + src.ox, y + src.oy, z + src.oz);
     const boost = g === 2 ? 1.9 : 1;
     const alpha = ALPHA3[t];
     for (let f = 0; f < 6; f++) {
@@ -82,7 +96,7 @@ function meshBox(src, x0, y0, z0, x1, y1, z1, bufs, stats) {
       const nx = x + face.dir[0], ny = y + face.dir[1], nz = z + face.dir[2];
       if (ny < 0) continue;
       const nt = (nx < 0 || nz < 0 || nx >= W || nz >= D || ny >= H) ? EMPTY : type[nx + W * (nz + D * ny)];
-      if (nt === t || OCCLUDES[nt]) continue;
+      if (nt === t || OCCLUDES[nt] || !ownsFace(t, nt)) continue;
       if (buf.n + 4 > buf.cap) buf.grow(buf.cap * 2);
       const tile = tileFor(t, f, grassy);
       const tc = tile % COLS, tr = Math.floor(tile / COLS);
@@ -93,9 +107,8 @@ function meshBox(src, x0, y0, z0, x1, y1, z1, bufs, stats) {
         const v = buf.n++;
         buf.pos[v * 3] = x + c[0] + src.ox; buf.pos[v * 3 + 1] = y + c[1] + src.oy; buf.pos[v * 3 + 2] = z + c[2] + src.oz;
         buf.nor[v * 3] = face.dir[0]; buf.nor[v * 3 + 1] = face.dir[1]; buf.nor[v * 3 + 2] = face.dir[2];
-        const uu = UV_INSET + c[3] * (1 - 2 * UV_INSET), vv = UV_INSET + c[4] * (1 - 2 * UV_INSET);
-        buf.uv[v * 2] = (tc + uu) / COLS;
-        buf.uv[v * 2 + 1] = 1 - (tr + 1 - vv) / ROWS;
+        buf.uv[v * 2] = (tc * CELL + PAD + c[3] * TILE) / ATLAS_W;
+        buf.uv[v * 2 + 1] = 1 - (tr * CELL + PAD + (1 - c[4]) * TILE) / ATLAS_H;
         let light = 1;
         if (g === 0) {
           const [s1, s2, cc] = face.ao[k];
@@ -119,12 +132,10 @@ function makeDecor(world) {
   // Ground and trees go in separate grids so trees can be hidden when they
   // block the camera.
   const PW = world.W, PD = world.D;          // play area size
-  const DW = PW + 150, DH = 112, DD = PD + 180;
+  const DW = PW + 150, DH = Math.round(world.H * 0.3) + 86, DD = PD + 180;
   const ground = new Uint8Array(DW * DH * DD);
   const trees = new Uint8Array(DW * DH * DD);
-  const shade = new Uint8Array(ground.length);
   const rand = rng(2024);
-  for (let i = 0; i < shade.length; i++) shade[i] = (rand() * 256) | 0;
   const idx = (x, y, z) => x + DW * (z + DD * y);
   const put = (x, y, z, t) => {
     x = Math.round(x); y = Math.round(y); z = Math.round(z);
@@ -157,7 +168,7 @@ function makeDecor(world) {
     for (let y = 0; y < h; y++) put(x, y, z, y < h - 4 ? STONE : DIRT);
   }
   const placed = [];
-  for (let k = 0; k < 400 && placed.length < 70; k++) {
+  for (let k = 0; k < 600 && placed.length < 90; k++) {
     const x = 6 + rand() * (DW - 12), z = 6 + rand() * (DD - 12);
     const out = outside(x, z);
     if (out < 14 || out > 70) continue;
@@ -195,7 +206,7 @@ function makeDecor(world) {
     if (out < 3 || out > 60) continue;
     blob(x, height(Math.round(x), Math.round(z)) + 1, z, 2 + rand() * 2.5, 1.6 + rand() * 1.2, rand() < 0.15 ? STONE : PLANT);
   }
-  const src = { W: DW, H: DH, D: DD, shade, ox: -DW / 2, oy: 0, oz: -DD / 2 };
+  const src = { W: DW, H: DH, D: DD, ox: -DW / 2, oy: 0, oz: -DD / 2 };
   return { ground: { ...src, type: ground }, trees: { ...src, type: trees } };
 }
 
@@ -249,17 +260,17 @@ export class Renderer3D {
 
     const scene = this.scene = new THREE.Scene();
     const fogColor = new THREE.Color('#1c5752');
-    scene.fog = new THREE.Fog(fogColor, 110, 300);
+    scene.fog = new THREE.Fog(fogColor, world.W * 0.6, world.W * 1.6);
 
     const camera = this.camera = new THREE.PerspectiveCamera(42, 1, 0.5, 1200);
-    this.home = { pos: new THREE.Vector3(world.W * 0.45, world.H * 0.85, world.W * 0.7), target: new THREE.Vector3(0, world.H * 0.3, 0) };
+    this.home = { pos: new THREE.Vector3(world.W * 0.35, world.H * 0.75, world.W * 0.55), target: new THREE.Vector3(0, world.H * 0.3, 0) };
     camera.position.copy(this.home.pos);
     const controls = this.controls = new OrbitControls(camera, this.canvas);
     controls.target.copy(this.home.target);
     controls.enableDamping = true;
     controls.dampingFactor = 0.08;
     controls.minDistance = 22;
-    controls.maxDistance = 200;
+    controls.maxDistance = world.W * 1.4;
     controls.maxPolarAngle = Math.PI * 0.47;
     controls.mouseButtons = { LEFT: null, MIDDLE: THREE.MOUSE.PAN, RIGHT: THREE.MOUSE.ROTATE };
     controls.touches = { ONE: null, TWO: THREE.TOUCH.DOLLY_ROTATE };
@@ -293,9 +304,11 @@ export class Renderer3D {
     const sun = this.sun = new THREE.DirectionalLight('#eafff2', 2.0);
     sun.position.copy(this.sunDir).multiplyScalar(110);
     sun.castShadow = true;
-    sun.shadow.mapSize.set(2048, 2048);
-    Object.assign(sun.shadow.camera, { left: -95, right: 95, top: 95, bottom: -95, near: 10, far: 300 });
-    sun.position.multiplyScalar(1.3);
+    const shadowSize = renderer.capabilities.maxTextureSize >= 8192 ? 4096 : 2048;
+    sun.shadow.mapSize.set(shadowSize, shadowSize);
+    const reach = world.W / 2 + 40;
+    Object.assign(sun.shadow.camera, { left: -reach, right: reach, top: reach, bottom: -reach, near: 10, far: reach * 4 });
+    sun.position.copy(this.sunDir).multiplyScalar(reach * 1.8);
     sun.shadow.bias = -0.0008;
     sun.shadow.normalBias = 0.3;
     scene.add(sun, sun.target);
@@ -303,19 +316,33 @@ export class Renderer3D {
     scene.add(this.glowLight);
 
     const atlas = new THREE.CanvasTexture(buildAtlas());
+    // Crisp pixels up close, smoothly averaged with mipmaps far away, so distant
+    // blocks do not sparkle or crawl when the camera moves.
     atlas.magFilter = THREE.NearestFilter;
-    atlas.minFilter = THREE.NearestFilter;
-    atlas.generateMipmaps = false;
+    atlas.minFilter = THREE.LinearMipmapLinearFilter;
+    atlas.generateMipmaps = true;
+    atlas.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
     atlas.colorSpace = THREE.SRGBColorSpace;
     this.materials = [
       new THREE.MeshLambertMaterial({ map: atlas, vertexColors: true }),
-      new THREE.MeshLambertMaterial({ map: atlas, vertexColors: true, transparent: true, depthWrite: false }),
+      // Water, ice, glass, acid: see-through but solid enough to write depth.
+      new THREE.MeshLambertMaterial({ map: atlas, vertexColors: true, transparent: true }),
       new THREE.MeshBasicMaterial({ map: atlas, vertexColors: true }),
+      // Steam and smoke.
+      new THREE.MeshLambertMaterial({ map: atlas, vertexColors: true, transparent: true, depthWrite: false }),
     ];
 
-    this.bufs = [new GeoBuf(), new GeoBuf(), new GeoBuf()];
-    this.src = { W: world.W, H: world.H, D: world.D, type: world.type, shade: world.shade, ox: -world.W / 2, oy: 0, oz: -world.D / 2 };
-    this.chunks = Array.from({ length: world.chunkCount }, () => [null, null, null]);
+    // Lean toward the sharper mipmap level so blocks keep their pixel texture.
+    for (const m of this.materials) {
+      m.onBeforeCompile = sh => {
+        sh.fragmentShader = sh.fragmentShader.replace('#include <map_fragment>',
+          'vec4 sampledDiffuseColor = texture2D( map, vMapUv, -0.9 ); diffuseColor *= sampledDiffuseColor;');
+      };
+    }
+
+    this.bufs = [new GeoBuf(), new GeoBuf(), new GeoBuf(), new GeoBuf()];
+    this.src = { W: world.W, H: world.H, D: world.D, type: world.type, ox: -world.W / 2, oy: 0, oz: -world.D / 2 };
+    this.chunks = Array.from({ length: world.chunkCount }, () => [null, null, null, null]);
     this.chunkGlow = Array.from({ length: world.chunkCount }, () => ({ n: 0, x: 0, y: 0, z: 0 }));
 
     this.buildDecor();
@@ -341,7 +368,9 @@ export class Renderer3D {
     this.cursor.visible = false;
     scene.add(this.cursor);
 
-    const composer = this.composer = new EffectComposer(renderer);
+    // 4× multisampling smooths block edges so they do not crawl as the camera moves.
+    const composer = this.composer = new EffectComposer(renderer,
+      new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: 4 }));
     composer.setPixelRatio(1 / this.pixelScale);
     composer.addPass(new RenderPass(scene, camera));
     this.bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.55, 0.45, 0.82);
@@ -355,7 +384,7 @@ export class Renderer3D {
 
   buildDecor() {
     const { ground, trees } = makeDecor(this.world);
-    const bufs = [new GeoBuf(), new GeoBuf(), new GeoBuf()];
+    const bufs = [new GeoBuf(), new GeoBuf(), new GeoBuf(), new GeoBuf()];
     this.treeChunks = [];
     for (const [src, S] of [[ground, 48], [trees, 16]]) {
       for (let y = 0; y < src.H; y += S) for (let z = 0; z < src.D; z += S) for (let x = 0; x < src.W; x += S) {
@@ -457,14 +486,14 @@ export class Renderer3D {
       const stats = this.chunkGlow[c];
       stats.n = stats.x = stats.y = stats.z = 0;
       meshBox(this.src, cx * 16, cy * 16, cz * 16, Math.min(w.W, cx * 16 + 16), Math.min(w.H, cy * 16 + 16), Math.min(w.D, cz * 16 + 16), this.bufs, stats);
-      for (let g = 0; g < 3; g++) {
+      for (let g = 0; g < 4; g++) {
         const geo = this.bufs[g].geometry();
         let mesh = this.chunks[c][g];
         if (!geo) { if (mesh) { mesh.visible = false; } continue; }
         if (!mesh) {
           mesh = new THREE.Mesh(geo, this.materials[g]);
           mesh.castShadow = g === 0;
-          mesh.receiveShadow = g !== 2;
+          mesh.receiveShadow = g === 0 || g === 1;
           mesh.matrixAutoUpdate = false;
           this.chunks[c][g] = mesh;
           this.scene.add(mesh);
@@ -482,9 +511,10 @@ export class Renderer3D {
   updateGlowLight() {
     let n = 0, x = 0, y = 0, z = 0;
     for (const s of this.chunkGlow) { n += s.n; x += s.x; y += s.y; z += s.z; }
-    if (n === 0) { this.glowLight.intensity = 0; return; }
+    if (n === 0) { this.glowTarget = 0; return; }
     const w = this.world;
-    this.glowLight.position.set(x / n - w.W / 2 + 0.5, y / n + 3, z / n - w.D / 2 + 0.5);
+    this.glowPos = new THREE.Vector3(x / n - w.W / 2 + 0.5, y / n + 3, z / n - w.D / 2 + 0.5);
+    if (!this.glowTarget) this.glowLight.position.copy(this.glowPos);
     this.glowTarget = Math.min(900, 40 * Math.sqrt(n));
   }
 
@@ -530,7 +560,7 @@ export class Renderer3D {
     const tDelta = Dv.map(v => (v === 0 ? Infinity : Math.abs(1 / v)));
     const tMax = Dv.map((v, a) => (v === 0 ? Infinity : t0 + (v > 0 ? c[a] + 1 - p[a] : p[a] - c[a]) / Math.abs(v)));
     let prev = null;
-    for (let n = 0; n < 400; n++) {
+    for (let n = 0; n < 1200; n++) {
       const t = type[c[0] + W * (c[2] + D * c[1])];
       if (t !== EMPTY && STATE[t] !== GAS) return { hit: [...c], place: prev };
       prev = [...c];
@@ -569,8 +599,11 @@ export class Renderer3D {
     sm.visible = this.sliceFade > 0;
     sm.material.opacity = Math.min(1, this.sliceFade) * 0.7;
     const g = this.glowLight;
-    const target = this.glowTarget || 0;
-    g.intensity += ((g.intensity > 0 || target > 0 ? target * (0.9 + Math.random() * 0.2) : 0) - g.intensity) * 0.2;
+    // The glow from lava and fire eases toward its new strength and place, so
+    // the scene lighting never flickers from frame to frame.
+    const ease = 1 - Math.exp(-dt * 4);
+    g.intensity += ((this.glowTarget || 0) - g.intensity) * ease;
+    if (this.glowPos) g.position.lerp(this.glowPos, ease);
     for (const s of this.shafts) {
       const o = 0.08 + 0.04 * Math.sin(this.time * 0.4 + s.userData.phase);
       for (const p of s.children) p.material.uniforms.opacity.value = o;

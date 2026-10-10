@@ -21,6 +21,7 @@ const MAX_SPEED = 7;   // terminal velocity in cells per step
 const BURNING = 4;     // flag bit: this cell is on fire
 const GROWING = 8;     // flag bit: tip of a growing tree
 const CHUNK = 16;      // 3D mesh chunk size
+const LOOK_AHEAD = 24; // how far a liquid looks sideways for somewhere lower to flow
 
 // How fast heat flows between two element types, and the chance that a
 // heavier element sinks through a lighter liquid in one step.
@@ -571,34 +572,40 @@ export class World {
     return -1;
   }
 
-  // Liquids flow sideways and keep their direction until blocked,
-  // which lets them level out like real water.
+  // Liquids flow sideways only when there is a reason to: a drop within reach
+  // (so the surface levels out), or the weight of liquid above pushing it
+  // out. A level pool or a thin film therefore stays perfectly still instead
+  // of sloshing back and forth.
   spread(i, t, x, y, z) {
-    const { W, D, L, type } = this;
+    const { W, H, D, L, type } = this;
     const fl = this.flags;
     const dirs = this.is3D ? 4 : 2;
     let dir = fl[i] & 3;
     if (dir >= dirs) dir &= 1;
     const steps = FLOW[t];
-    for (let attempt = 0; attempt < 2; attempt++) {
+    const pressed = y < H - 1 && STATE[type[i + L]] === LIQUID;
+    for (let attempt = 0; attempt < (this.is3D ? 3 : 2); attempt++) {
       const dx = SIDE_X[dir], dz = SIDE_Z[dir];
       const off = dx + dz * W;
-      let cur = i, cx = x, cz = z;
-      for (let s = 0; s < steps; s++) {
+      let j = i, cx = x, cz = z, open = 0, drop = 0;
+      for (let s = 1; s <= LOOK_AHEAD; s++) {
         cx += dx; cz += dz;
         if (cx < 0 || cx >= W || cz < 0 || cz >= D) break;
-        const j = cur + off;
+        j += off;
         const o = type[j];
         if (o !== EMPTY && STATE[o] !== GAS) break;
-        this.swap(cur, j);
-        cur = j;
-        if (y > 0 && type[j - L] === EMPTY) break; // found a drop, fall next step
+        open = s;
+        if (y > 0) { const b = type[j - L]; if (b === EMPTY || STATE[b] === GAS) { drop = s; break; } }
       }
-      if (cur !== i) {
-        fl[cur] = (fl[cur] & ~3) | dir;
-        return cur;
+      // Head toward the drop, at most `steps` cells per step.
+      const go = drop ? Math.min(drop, steps) : (pressed && open ? 1 : 0);
+      if (go) {
+        const target = i + off * go;
+        this.swap(i, target);
+        fl[target] = (fl[target] & ~3) | dir;
+        return target;
       }
-      dir = this.is3D ? (Math.random() * 4) | 0 : dir ^ 1;
+      dir = this.is3D ? (dir + 1 + ((Math.random() * 3) | 0)) & 3 : dir ^ 1;
     }
     fl[i] = (fl[i] & ~3) | dir;
     return i;

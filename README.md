@@ -6,7 +6,7 @@ simple real-world physics: heavy things sink, liquids level out, heat flows
 from hot to cold, and things melt, boil, freeze and burn at their real
 temperatures.
 
-There is **one world**, a block of 160 × 90 × 48 voxels, with one simulation
+There is **one world**, a block of 256 × 112 × 64 voxels (about 1.8 million cells), with one simulation
 running all the time. You can look at it two ways. Switch with the **2D / 3D**
 button at the top, or press **M**:
 
@@ -142,8 +142,13 @@ uses **three.js**, a well-known free 3D engine for the web. Here is why:
 - **Fast enough.** A falling-sand game updates every cell many times a second.
   Modern browsers run JavaScript very fast. The engine skips regions where
   nothing can happen (buried rock, calm water, ground at room temperature),
-  so a step of the whole 690,000-cell world takes about 2 ms when it is calm,
-  and around 10 ms in the middle of a big fire.
+  so a step of the whole 1.8-million-cell world takes under 1 ms when it is
+  calm, and around 10 ms in the middle of a big fire. The 3D view only
+  rebuilds the 16×16×16 blocks that changed, and only draws the ones in view.
+- **Still means still.** Resting sand and calm water do not move at all, a
+  voxel's shading is fixed by its position, faces that touch are never drawn
+  twice, and textures are mipmapped, so the 3D world does not flicker or
+  shimmer when nothing is happening or when the camera turns.
 - **No game engine needed for the physics.** Engines like Unity or Godot come
   with rigid-body physics (bouncing boxes). Falling-sand physics is a different
   kind of simulation that every sand game writes itself. A big engine would
