@@ -32,6 +32,9 @@ export const FAR_SIDE = new Uint8Array([0, 0, 1, 0, 1, 0, 0]);
 
 const HARD_CELL = new Uint8Array(El.COUNT);
 for (let t = 1; t < El.COUNT; t++) HARD_CELL[t] = (STATE[t] === SOLID || STATE[t] === POWDER) && t !== BODY ? 1 : 0;
+// Leaves are scenery too: bodies push through bushes (it slows them down).
+HARD_CELL[El.PLANT] = 0;
+const PASS = 128; // world flag: tree trunks and hut back walls, walked past (see world.js)
 // Solids you can still breathe through (leaves let air in).
 const AIRY_SOLID = new Uint8Array(El.COUNT);
 AIRY_SOLID[El.PLANT] = 1;
@@ -75,7 +78,7 @@ function biped(armsForward) {
       ['head', 'hips', 0, null, 0.4],
     ],
     dots: [['footL', 0.62, 'shoe'], ['footR', 0.62, 'shoe'], ['handL', 0.48, 'skin'], ['handR', 0.48, 'skin']],
-    root: 'hips', headPt: 'head', neckPt: 'neck', headR: 1.15, walker: true,
+    root: 'hips', headPt: 'head', neckPt: 'neck', headR: 1.15, walker: true, upright: true,
   };
 }
 
@@ -299,18 +302,22 @@ for (const sp of Object.values(SPECIES)) {
   sp.legL = sp.points.some(p => p[5] === LEG_L) ? 1 : 0;
   sp.legR = sp.points.some(p => p[5] === LEG_R) ? 1 : 0;
   sp.length = Math.max(...sp.rest.map(r => r[0])) - Math.min(...sp.rest.map(r => r[0]));
+  // How far in front of the root the front feet are (for stepping up onto ledges).
+  sp.footReach = Math.max(0, ...sp.points.filter(p => p[7] === 'foot').map(p => p[1] - sp.rest[sp.rootK][0]));
 }
 
 let nextId = 1;
 class Creature {
-  constructor(kind, x, y, facing, colors) {
+  // size: 1 for a grown-up, less for a baby (it grows up over time).
+  constructor(kind, x, y, facing, colors, size = 1) {
     const sp = SPECIES[kind];
     this.id = nextId++;
     this.kind = kind; this.sp = sp;
+    this.size = size;
     const n = this.n = sp.points.length;
     this.px = new Float32Array(n); this.py = new Float32Array(n);
     this.ox = new Float32Array(n); this.oy = new Float32Array(n);
-    this.r = new Float32Array(sp.points.map(p => p[3]));
+    this.r = new Float32Array(sp.points.map(p => p[3] * Math.max(0.6, size)));
     this.im = new Float32Array(sp.points.map(p => 1 / p[4]));
     this.limb = new Uint8Array(sp.points.map(p => p[5]));
     this.wound = new Float32Array(n);   // all harm a part has taken (for blood on clothes)
@@ -319,12 +326,12 @@ class Creature {
     this.bleed = new Float32Array(n);   // how fast each part is bleeding (clots over time)
     this.limbHp = new Float32Array(7).fill(sp.hp * 0.6); // each body part can be broken on its own
     this.detached = new Uint8Array(n);
-    this.sticks = sp.stickList.map(s => ({ ...s, broken: false, bleed: 0 }));
+    this.sticks = sp.stickList.map(s => ({ ...s, len: s.len * size, broken: false, bleed: 0 }));
     this.facing = facing;        // 1: facing right, -1: facing left
     for (let k = 0; k < n; k++) {
       const [f, u] = sp.rest[k];
-      this.px[k] = this.ox[k] = x + f * facing;
-      this.py[k] = this.oy[k] = y + u;
+      this.px[k] = this.ox[k] = x + f * size * facing;
+      this.py[k] = this.oy[k] = y + u * size;
     }
     this.colors = colors;
     this.hp = sp.hp; this.alive = true;
@@ -341,6 +348,12 @@ class Creature {
     this.impact = 0; this.impactK = 0;
     this.swimDY = 0; this.flapping = false;
     this.flyY = 0; this.hopT = 30; this.limp = 1; this.fireCool = 0;
+    // Needs and daily life (see life.js): 0 = fine, 1 = desperate.
+    this.hunger = 0.1 + Math.random() * 0.25; this.thirst = 0.1 + Math.random() * 0.2;
+    this.energy = 0.7 + Math.random() * 0.3;
+    this.task = null; this.act = null; this.inv = { wood: 0, seed: 0 };
+    this.home = null; this.breedT = 2000 + Math.random() * 2000; this.alarmT = 0; this.alarmDir = 0;
+    this.chatT = 0; this.avoid = new Map(); this.meat = 1;
   }
 }
 
@@ -357,16 +370,17 @@ export class Creatures {
 
   clear() {
     this.list.length = 0; this.owner.clear();
+    if (this.life) this.life.reset();
     if (this.was.length !== this.world.N) this.was = new Uint8Array(this.world.N);
     else for (const i of this.prevStamped) this.was[i] = 0;
     this.stamped.length = 0; this.prevStamped.length = 0;
   }
 
-  spawn(kind, x, y, facing = Math.random() < 0.5 ? 1 : -1) {
+  spawn(kind, x, y, facing = Math.random() < 0.5 ? 1 : -1, size = 1) {
     const w = this.world, sp = SPECIES[kind];
     // Start clear of anything solid.
     x = Math.max(2, Math.min(w.W - 3, x));
-    const tall = Math.ceil(sp.height) + 1;
+    const tall = Math.ceil(sp.height * size) + 1;
     for (let tries = 0; tries < 40 && y < w.H - tall; tries++) {
       let free = true;
       for (let u = 0; u < tall && free; u++) if (HARD_CELL[this.cellType(x, y + u)]) free = false;
@@ -374,7 +388,7 @@ export class Creatures {
       y++;
     }
     if (!sp.walker) y += 0.5;
-    const c = new Creature(kind, x, y + 0.05, facing, sp.colors(Math.random));
+    const c = new Creature(kind, x, y + 0.05, facing, sp.colors(Math.random), size);
     this.list.push(c);
     // Too many: the oldest body goes first, then the oldest creature.
     if (this.list.length > MAX_CREATURES) {
@@ -385,7 +399,30 @@ export class Creatures {
     return c;
   }
 
+  // A growing baby: stretch its body toward the new size.
+  setSize(c, size) {
+    c.size = size;
+    const sp = c.sp;
+    for (let k = 0; k < c.n; k++) c.r[k] = sp.points[k][3] * Math.max(0.6, size);
+    c.sticks.forEach((s, j) => { s.len = sp.stickList[j].len * size; });
+  }
+
   // ----- world access -----
+  // What a creature breathes at (x, y): in front of a post or a trunk, the
+  // water or air around it.
+  mediumAt(x, y) {
+    const i = this.cellIndex(x, y), w = this.world;
+    if (i < 0 || !(w.flags[i] & PASS)) return this.cellType(x, y);
+    const ix = Math.floor(x);
+    for (let d = 1; d <= 3; d++) for (const dx of [-d, d]) {
+      if (ix + dx < 0 || ix + dx >= w.W) continue;
+      const j = i + dx;
+      if (w.flags[j] & PASS) continue;
+      return STATE[w.type[j]] === LIQUID ? w.type[j] : EMPTY;
+    }
+    return EMPTY;
+  }
+
   cellIndex(x, y) {
     const w = this.world;
     const ix = Math.floor(x), iy = Math.floor(y);
@@ -394,12 +431,13 @@ export class Creatures {
   }
   cellType(x, y) {
     const i = this.cellIndex(x, y);
-    return i < 0 ? (y < 0 ? El.STONE : EMPTY) : this.world.type[i];
+    return i < 0 ? (y < 0 ? El.STONE : EMPTY) : this.world.flags[i] & PASS ? EMPTY : this.world.type[i];
   }
 
   // ----- the step -----
   step() {
     const w = this.world;
+    if (this.life) this.life.tick();
     this.feelWorld();
     for (const c of this.list) this.update(c);
     this.collideBodies();
@@ -506,6 +544,8 @@ export class Creatures {
         const drag = 0.08 + 0.35 * (1 - VISC[t]);
         vx *= 1 - drag; vy *= 1 - drag;
         ay += GRAVITY * DENS[t] / rho;
+      } else if (t === El.PLANT) {
+        vx *= 0.97; vy *= 0.98; // pushing through leaves
       } else {
         vx *= 0.996;
         vy *= c.flapping && c.limb[k] !== LEG_L && c.limb[k] !== LEG_R ? 0.86 : 0.996;
@@ -556,7 +596,7 @@ export class Creatures {
   // into a surface stops that part of the motion and rubs off some of the
   // sliding (friction); the hardest hit is remembered for fall damage.
   collide(c, first) {
-    const w = this.world, type = w.type, W = w.W, H = w.H;
+    const w = this.world, type = w.type, flags = w.flags, W = w.W, H = w.H;
     for (let k = 0; k < c.n; k++) {
       const r = c.r[k];
       let x = c.px[k], y = c.py[k];
@@ -571,7 +611,7 @@ export class Creatures {
       let bouncy = false;
       for (let cy = y0; cy <= y1; cy++) for (let cx = x0; cx <= x1; cx++) {
         const ct = type[cx + W * cy];
-        if (!HARD_CELL[ct]) continue;
+        if (!HARD_CELL[ct] || (flags[cx + W * cy] & PASS)) continue;
         if (ct === RUBBER) bouncy = true;
         // Closest point of the cell to the point's centre.
         const qx = x < cx ? cx : x > cx + 1 ? cx + 1 : x;
@@ -586,7 +626,7 @@ export class Creatures {
           let best = null;
           for (const o of opts) {
             const ox = cx + o[0], oy = cy + o[1];
-            const open = ox < 0 || ox >= W || oy >= H || (oy >= 0 && !HARD_CELL[type[ox + W * oy]]);
+            const open = ox < 0 || ox >= W || oy >= H || (oy >= 0 && (!HARD_CELL[type[ox + W * oy]] || (flags[ox + W * oy] & PASS)));
             const cost = o[2] + (open ? 0 : 3) - (o[1] === 1 ? 0.15 : 0);
             if (!best || cost < best[2]) best = [o[0], o[1], cost, o[2]];
           }
@@ -655,7 +695,8 @@ export class Creatures {
     const stop = Math.max(-1, Math.floor(y - depth));
     for (; iy > stop; iy--) {
       if (iy < 0) return 0;
-      if (HARD_CELL[w.type[ix + w.W * iy]]) return iy + 1;
+      const j = ix + w.W * iy;
+      if (HARD_CELL[w.type[j]] && !(w.flags[j] & PASS)) return iy + 1;
     }
     return iy < 0 ? 0 : -1;
   }
@@ -681,15 +722,24 @@ export class Creatures {
     if (sp.swimmer) { this.swim(c); return; }
     if (sp.flies && c.mood === 'fly') { this.fly(c); return; }
 
-    const rootU = sp.rest[k0][1];
+    const z = c.size;
+    const rootU = sp.rest[k0][1] * z;
     let ground = this.groundBelow(rx, ry, rootU + 2.5);
     // Look a step ahead too, so a creature lifts itself onto a ledge.
     if (c.speed > 0 && ground >= 0) {
-      const ahead = this.groundBelow(rx + fx * 1.4, ry + 2.2, rootU + 4.5);
-      if (ahead > ground && ahead - ground <= 2.5) ground = ahead;
+      // Check under the front feet and a little beyond, and lift onto the highest step.
+      const far = Math.max(1.4, (sp.footReach + 1) * z);
+      let best = ground;
+      for (let d = 1; d <= far + 0.01; d += Math.max(0.5, far / 4)) {
+        const ahead = this.groundBelow(rx + fx * d, ry + 2.2, rootU + 4.5);
+        if (ahead > best && ahead - ground <= 2.5) best = ahead;
+      }
+      ground = best;
     }
     // Falling fast: the legs cannot catch the body, it just lands.
     if (c.py[k0] - c.oy[k0] < -0.4) ground = -1;
+    // Just jumped: the legs let the body fly instead of holding it on the ground.
+    if (c.jumpT > 20 && c.py[k0] - c.oy[k0] > 0) ground = -1;
     const rootT = this.cellType(rx, ry);
     const inLiquid = STATE[rootT] === LIQUID;
     // Lighter than the liquid it is in: it floats rather than standing on the bottom.
@@ -716,7 +766,8 @@ export class Creatures {
         c.oy[h] -= GRAVITY * 1.9; c.oy[n] -= GRAVITY * 1.3;
       }
       c.stamina--;
-      if (c.speed > 0) c.ox[k0] -= fx * 0.02;
+      // Paddle: the whole body moves the way it faces.
+      if (c.speed > 0) for (let k = 0; k < c.n; k++) c.ox[k] -= fx * 0.012;
     } else if (c.grounded) c.stamina = Math.min(600, c.stamina + 3);
 
     // Hoppers stand still between jumps and leap forward.
@@ -726,15 +777,17 @@ export class Creatures {
     }
     const speed = c.grounded && !sp.hops ? c.speed * (thick ? 0.08 : inLiquid ? 0.55 : 1) * c.limp : 0;
     if (speed > 0.005) c.phase += speed * 0.9;
-    const stride = Math.min(sp.flaps ? 0.7 : 1.7, speed * 22), lift = Math.min(1, speed * 12);
+    const stride = Math.min(sp.flaps ? 0.7 : 1.7, speed * 22) * z, lift = Math.min(1, speed * 12) * z;
     const bob = speed > 0.005 ? 0 : 0.08 * Math.sin(c.age * 0.05);
     // In the air the pose is held around the hips, so it moves with them.
     const air = ground < 0;
     const rvx = air ? rx - c.ox[k0] : 0, rvy = air ? ry - c.oy[k0] : 0;
+    const asleep = c.mood === 'sleep' && !air, act = air ? null : c.act;
+    const sw = Math.sin(c.age * 0.3);
     for (let k = 0; k < c.n; k++) {
       if (c.detached[k] || (k === k0 && air)) continue;
       const P = sp.points[k];
-      let F = P[1], U = P[2];
+      let F = P[1] * z, U = P[2] * z;
       if (P[7]) {
         const ph = c.phase + (P[8] ? Math.PI : 0);
         const sn = Math.sin(ph), up = Math.max(0, Math.cos(ph));
@@ -744,8 +797,26 @@ export class Creatures {
         else F -= stride * 0.4 * sn;
       }
       if (k === k0) U += bob;
-      const tx = rx + fx * (F - sp.rest[k0][0]), ty = base + U;
-      let m = P[6] * c.strength * support;
+      let tx = rx + fx * (F - sp.rest[k0][0] * z), ty = base + U;
+      if (asleep) {
+        // Asleep: people lie down flat; animals curl up low.
+        if (sp.upright) { tx = rx + fx * (P[2] - sp.rest[k0][1]) * z * 0.95; ty = base + (0.55 + Math.max(-0.2, P[1]) * 0.2) * z; }
+        else ty = base + (P[2] * 0.45 + 0.25) * z;
+      } else if (act) {
+        // Busy: heads go down to eat and drink; arms swing to chop and build.
+        const hand = P[7] === 'hand', elbow = P[7] === 'elbow';
+        if (act === 'eat' || act === 'drink') {
+          if (sp.upright) { if (hand && !P[8]) { tx = rx + fx * 1.1 * z; ty = base + (7.4 + 0.5 * sw) * z; } }
+          else if (P[5] === HEAD) { ty -= (1.1 + 0.3 * sw) * z; tx += fx * 0.5 * z; }
+        } else if (sp.upright && (act === 'chop' || act === 'build')) {
+          if (hand || elbow) { const f = hand ? 1 : 0.55; tx = rx + fx * (0.9 + 1.4 * f) * z; ty = base + (6.6 + 2.4 * f * sw) * z; }
+        } else if (act === 'plant') {
+          if (P[5] === HEAD || P[0] === 'neck') { tx += fx * 1.3 * z; ty -= 1.7 * z; }
+          if (sp.upright && hand) { tx = rx + fx * 2.1 * z; ty = base + (1.4 + 0.5 * sw) * z; }
+          if (!sp.upright && P[5] === HEAD) ty -= 0.5 * z;
+        }
+      }
+      let m = P[6] * c.strength * support * (asleep ? 0.5 : 1);
       // A broken arm or leg hangs limp.
       if (P[5] !== CORE && P[5] !== HEAD && c.limbHp[P[5]] <= 0) m = 0;
       if (c.swimming) m *= 0.5;
@@ -760,12 +831,12 @@ export class Creatures {
   fly(c) {
     const sp = c.sp, k0 = sp.rootK, fx = c.facing;
     c.flapping = true;
-    const rx = c.px[k0], ry = c.py[k0], rootU = sp.rest[k0][1];
+    const z = c.size, rx = c.px[k0], ry = c.py[k0], rootU = sp.rest[k0][1] * z;
     const climb = Math.max(-0.15, Math.min(0.2, (c.flyY - ry) * 0.04));
     for (let k = 0; k < c.n; k++) {
       if (c.detached[k]) continue;
       const P = sp.points[k];
-      const tx = rx + fx * (P[1] - sp.rest[k0][0]), ty = ry + P[2] - rootU;
+      const tx = rx + fx * (P[1] - sp.rest[k0][0]) * z, ty = ry + P[2] * z - rootU;
       let vx = c.px[k] - c.ox[k], vy = c.py[k] - c.oy[k];
       // GRAVITY is added back so that, after falling this step, it moves as asked.
       const gx = (tx - c.px[k]) * 0.35 + fx * c.speed, gy = (ty - c.py[k]) * 0.35 + climb + GRAVITY;
@@ -791,7 +862,7 @@ export class Creatures {
     c.phase += 0.25;
     const rx = c.px[k0], ry = c.py[k0], fx = c.facing;
     for (let k = 0; k < c.n; k++) {
-      const F = sp.rest[k][0] - sp.rest[k0][0];
+      const F = (sp.rest[k][0] - sp.rest[k0][0]) * c.size;
       const wig = k >= 2 ? Math.sin(c.phase - k) * 0.3 * (k - 1) : 0;
       const tx = rx + fx * F, ty = ry + wig;
       let vx = c.px[k] - c.ox[k], vy = c.py[k] - c.oy[k];
@@ -814,22 +885,29 @@ export class Creatures {
   think(c) {
     const sp = c.sp;
     if ((c.age + c.id) % 5 !== 0) return;
-    if (c.stun > 0 || c.grab) { c.speed = 0; return; }
+    const life = this.life;
+    if (c.jumpT > 0) c.jumpT -= 5;
+    if (life) life.needs(c);
+    if (!c.alive) return;
+    if (c.stun > 0 || c.grab) { c.speed = 0; c.act = null; if (c.mood === 'sleep') c.mood = 'idle'; return; }
     const w = this.world;
     const k0 = sp.rootK, h = sp.headK;
     const hx = c.px[h], hy = c.py[h];
     let fear = this.sense(c), prey = null;
 
     if (sp.hunts) prey = this.nearest(c, o => o.alive && o.kind === sp.hunts, 60);
-    if (sp.chases) prey = this.nearest(c, o => o.alive && o.kind === sp.chases, 40);
+    if (sp.chases && !life) prey = this.nearest(c, o => o.alive && o.kind === sp.chases, 40);
+    if (life) prey = prey || life.prey(c);
     if (sp.fears) {
-      const o = this.nearest(c, o => o.alive && o.kind === sp.fears, 14);
+      // Close by, or coming at a run.
+      const o = this.nearest(c, o => o.alive && o.kind === sp.fears, 6) ||
+        this.nearest(c, o => o.alive && o.kind === sp.fears && (o.mood === 'hunt' || o.speed > o.sp.walk * 1.3), 14);
       if (o) { fear = (fear || 0) + Math.sign(hx - o.px[o.sp.rootK]) * 2; prey = null; }
     }
     if (sp.hatesWater && STATE[this.cellType(c.px[k0], c.py[k0])] === LIQUID) fear = fear || (Math.random() < 0.5 ? 1 : -1);
     // Sheep stop to nibble any leaves or grass by their head.
     // A sheep facing leaves stops and nibbles them, a mouthful at a time.
-    if (sp.grazes && !fear) {
+    if (sp.grazes && !fear && !life) {
       const w0 = this.world;
       for (const [dx, dy] of [[0.8, 0], [1.4, -0.6], [0.8, -1], [0, -1.2], [1.6, 0.4], [2.2, -1], [2.2, -2], [1.6, -2.6], [2.6, 0]]) {
         const i = this.cellIndex(hx + dx * c.facing, hy + dy);
@@ -844,9 +922,15 @@ export class Creatures {
       if (z) fear = (fear || 0) + Math.sign(hx - z.px[z.sp.headK]) * 2;
     }
     if (sp.skittish) {
-      const o = this.nearest(c, o => o.alive && o !== c && o.kind !== c.kind, 7);
+      // Small animals keep away from hunters, zombies and anyone running at them.
+      const o = this.nearest(c, o => o.alive && o !== c && o.kind !== c.kind &&
+        (o.kind === 'dog' || o.kind === 'cat' || o.kind === 'zombie' || o.speed > o.sp.walk * 1.3), 7);
       if (o) fear = (fear || 0) + Math.sign(hx - o.px[o.sp.rootK]);
     }
+    // Fear spreads: a creature that runs makes those around it run too.
+    if (life && (fear || c.fire > 0)) life.alarm(c, fear || (Math.random() - 0.5));
+    if (!fear && c.alarmT > 0) fear = c.alarmDir;
+    if (fear || c.fire > 0 || prey) { c.act = null; if (c.mood === 'sleep') c.mood = 'idle'; if (c.task && c.task.kind !== 'meat') c.task = null; }
     const face = dx => { c.facing = dx >= 0 ? 1 : -1; };
 
     if (sp.swimmer) {
@@ -868,6 +952,26 @@ export class Creatures {
 
     if (sp.flies && this.thinkFlight(c, fear)) return;
 
+    // A land animal out of its depth makes for the shore before anything
+    // else, hunting and running away included.
+    // (A head dipped in to drink does not count until it runs short of air.)
+    const wading = STATE[this.cellType(c.px[k0], c.py[k0])] === LIQUID || (c.oxygen < 560 && STATE[this.cellType(hx, hy)] === LIQUID);
+    if (life && (c.swimming || wading) && c.kind !== 'frog' && c.fire <= 0) {
+      const dir = life.shoreDir(c);
+      if (dir) {
+        c.facing = dir; c.speed = sp.run; c.mood = 'walk'; c.act = null;
+        // Getting nowhere (caught on the bank or a stump): kick hard, up and forward.
+        const rxNow = c.px[k0];
+        c.stallT = Math.abs(rxNow - (c.lastPX ?? rxNow)) < 0.15 ? (c.stallT || 0) + 5 : 0;
+        c.lastPX = rxNow;
+        if (c.stallT >= 30) {
+          for (let k = 0; k < c.n; k++) { c.oy[k] = c.py[k] - 0.45; c.ox[k] = c.px[k] - dir * 0.18; }
+          c.stallT = 0;
+        }
+        return;
+      }
+    }
+
     if (c.fire > 0) {
       // On fire: run about in a panic.
       c.mood = 'panic'; c.speed = sp.run;
@@ -878,8 +982,9 @@ export class Creatures {
     } else if (prey) {
       face(prey.px[prey.sp.rootK] - c.px[k0]);
       c.speed = sp.run; c.mood = 'hunt';
-      // Zombies bite when close enough; a dog just plays.
-      if (sp.hunts && c.biteT <= 0) {
+      // Zombies bite when close enough; hungry hunters catch and eat their prey.
+      if (life && !sp.hunts) life.pounce(c, prey);
+      else if (sp.hunts && c.biteT <= 0) {
         for (let k = 0; k < prey.n; k++) {
           if (Math.hypot(prey.px[k] - hx, prey.py[k] - hy) < 2.2) {
             c.biteT = 40;
@@ -889,9 +994,12 @@ export class Creatures {
           }
         }
       }
+    } else if (life && life.decide(c)) {
+      // Daily life chose what to do: eat, sleep, gather, build, plant...
     } else {
+      c.act = null;
       c.moodT -= 5;
-      if (c.mood === 'flee' || c.mood === 'panic' || c.mood === 'hunt') c.moodT = 0;
+      if (c.mood === 'flee' || c.mood === 'panic' || c.mood === 'hunt' || c.mood === 'sleep') c.moodT = 0;
       if (c.moodT <= 0) {
         if (Math.random() < 0.35) { c.mood = 'idle'; c.speed = 0; c.moodT = 60 + Math.random() * 160; }
         else {
@@ -904,12 +1012,43 @@ export class Creatures {
     // Turn back at walls, big drops and the edge of the world.
     if (c.speed > 0 && c.grounded && !c.swimming) {
       const ax = c.px[k0] + c.facing * 2.2;
-      const foot = c.py[k0] - sp.rest[k0][1];
+      const foot = c.py[k0] - sp.rest[k0][1] * c.size;
       let blocked = ax < 2 || ax > w.W - 2;
-      for (let u = 3; u < sp.height && !blocked; u += 1.5) if (HARD_CELL[this.cellType(ax, foot + u)]) blocked = true;
+      for (let u = 3; u < sp.height * c.size && !blocked; u += 1.5) if (HARD_CELL[this.cellType(ax, foot + u)]) blocked = true;
       const panicky = c.mood === 'flee' || c.mood === 'panic';
+      // Something low in the way (a log, a step) just past its nose: jump over it.
+      let jx = -1;
+      for (let d = 0.5; d <= (sp.length * 0.5 + 2.6) * c.size && jx < 0; d += 0.5) {
+        const x = c.px[k0] + c.facing * d;
+        if (HARD_CELL[this.cellType(x, foot + 0.5)] && HARD_CELL[this.cellType(x, foot + 1.5)]) jx = x;
+      }
+      let tall = 0;
+      while (tall < 8 && HARD_CELL[this.cellType(jx, foot + 0.5 + tall)]) tall++;
+      if (tall >= 2 && tall <= 4.5 * c.size + 0.5 && !sp.hops && !(c.jumpT > 0) && !HARD_CELL[this.cellType(jx, foot + tall + 1.5)]) {
+        const up = 0.42 + 0.05 * tall;
+        for (let k = 0; k < c.n; k++) { c.oy[k] = c.py[k] - up; c.ox[k] = c.px[k] - c.facing * 0.14; }
+        c.jumpT = 40; blocked = false;
+      }
       if (!blocked && !panicky && this.groundBelow(ax, foot + 1, 8) < 0 && STATE[this.cellType(ax, foot - 1)] !== LIQUID) blocked = true;
-      if (blocked) { c.facing = -c.facing; c.moodT = Math.max(c.moodT, 30); }
+      // Calm land animals stop at the water's edge (frogs and fish do not mind).
+      const toWater = this.life && c.kind !== 'frog' && !c.swimming && c.fire <= 0 && STATE[this.cellType(c.px[k0], c.py[k0])] !== LIQUID &&
+        STATE[this.cellType(ax, foot + 0.5)] === LIQUID;
+      if (!blocked && toWater && !panicky) blocked = true;
+      // Running scared: stop at the water's edge rather than run in.
+      if (toWater && panicky) c.speed = 0;
+      // Trying to walk but getting nowhere (a root, a lip of rock): scramble with a small hop.
+      const rxNow = c.px[k0];
+      c.stallT = !blocked && Math.abs(rxNow - (c.lastPX ?? rxNow)) < 0.12 ? (c.stallT || 0) + 5 : 0;
+      c.lastPX = rxNow;
+      if (c.stallT >= 40 && !sp.hops && !(c.jumpT > 0)) {
+        for (let k = 0; k < c.n; k++) { c.oy[k] = c.py[k] - 0.38; c.ox[k] = c.px[k] - c.facing * 0.12; }
+        c.jumpT = 30; c.stallT = 0;
+      }
+      if (blocked) {
+        // Heading somewhere: stop at the edge (it may be the place). Otherwise turn back.
+        if (c.task && !panicky) { c.speed = 0; c.edgeAt = c.age; }
+        else { c.facing = -c.facing; c.moodT = Math.max(c.moodT, 30); }
+      }
     }
   }
 
@@ -919,6 +1058,14 @@ export class Creatures {
   thinkFlight(c, fear) {
     const sp = c.sp, w = this.world, k0 = sp.rootK;
     const x = c.px[k0], y = c.py[k0];
+    // Asleep, roosting at night, or coming down to eat: stay on the ground.
+    if (!fear && c.fire <= 0 && this.life) {
+      if (this.life.stayDown(c)) {
+        if (c.mood === 'fly') { c.mood = 'idle'; c.speed = 0; }
+        return false;
+      }
+      if (this.life.flyTo(c)) return true; // somewhere to be: fly there
+    }
     c.moodT -= 5;
     // Wet feathers: get out of the water.
     if (c.mood !== 'fly' && STATE[this.cellType(x, y)] === LIQUID) fear = fear || (Math.random() < 0.5 ? 1 : -1);
@@ -991,7 +1138,7 @@ export class Creatures {
         c.wound[k] += 0.03 * sp.acid;
         if (Math.random() < 0.01) w.set(i, SMOKE, T + 10);
       } else if (DOUSES[t]) doused = true;
-      if (HARD_CELL[t]) embedded++;
+      if (HARD_CELL[t] && !(w.flags[i] & PASS)) embedded++;
     }
 
     // Fire.
@@ -1032,7 +1179,7 @@ export class Creatures {
     // Breathing.
     const h = sp.headK;
     if (sp.breathes) {
-      const ht = this.cellType(c.px[h], c.py[h] + 0.3);
+      const ht = this.mediumAt(c.px[h], c.py[h] + 0.3);
       const buried = (HARD_CELL[ht] && !AIRY_SOLID[ht]) || this.buried(c);
       const ok = sp.breathes === 'water' ? ht === WATER || ht === BRINE
         : sp.breathes === 'both' ? !buried && (STATE[ht] !== LIQUID || ht === WATER || ht === BRINE)
@@ -1354,7 +1501,7 @@ export class Creatures {
 
   // Short status text for the inspector.
   describe(c) {
-    const bits = [c.sp.name];
+    const bits = [c.size < 0.97 ? `Baby ${c.sp.name.toLowerCase()}` : c.sp.name];
     if (!c.alive) bits.push(c.char >= 0.6 ? 'charred' : 'dead');
     else {
       bits.push(`${Math.max(1, Math.round(c.hp))}/${c.sp.hp} HP`);
@@ -1363,7 +1510,8 @@ export class Creatures {
       else if (c.sp.breathes && c.oxygen < 200) bits.push(c.sp.breathes === 'water' ? 'gasping' : 'out of breath');
       else if (c.infected) bits.push('bitten');
       else if (c.swimming) bits.push('swimming');
-      else if (c.sp.grazes && c.mood === 'idle' && c.speed === 0) bits.push('grazing');
+      else if (c.mood === 'sleep') bits.push('asleep');
+      else if (this.life && this.life.doing(c)) bits.push(this.life.doing(c));
       else if (c.mood === 'fly') bits.push('flying');
       else if (c.stun > 0 && !c.grab) bits.push('knocked out');
       else if (c.mood === 'flee' || c.mood === 'panic') bits.push('scared');
@@ -1373,6 +1521,7 @@ export class Creatures {
       if (c.limbHp[ARM_L] <= 0 || c.limbHp[ARM_R] <= 0) broken.push('arm');
       if (c.limbHp[LEG_L] <= 0 || c.limbHp[LEG_R] <= 0) broken.push('leg');
       if (broken.length) bits.push('broken ' + broken.join(' and '));
+      if (this.life) this.life.feelings(c, bits);
     }
     return bits.join(' · ');
   }

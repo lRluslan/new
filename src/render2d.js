@@ -53,6 +53,15 @@ const MERCURY_HI = packHex('#f4f8fa'), HONEY_D = ['#f6c45a', '#e8a93a', '#d9952a
 const CLONER_FRAME = packHex('#5b6270'), DRAIN_CORE = packHex('#05040a'), DRAIN_RIM = packHex('#4a3a78');
 const LEAF_COLORS = ['#8ccf4e', '#6ab944', '#b4e264', '#4f9e3c', '#d2ec7a'].map(packHex);
 const MOTE = packHex('#fffbd2');
+// The inside of a hut: plank back wall and a window that glows at night.
+const HUT_WALL = ['#5a3e2a', '#4e3424'].map(packHex), HUT_SEAM = packHex('#3a2818');
+const WINDOW_DAY = packHex('#9fc8c0'), WINDOW_NIGHT = packHex('#ffd27a'), WINDOW_FRAME = packHex('#6e4a32');
+// Little signs above creatures: a "z" while asleep, a heart for a new baby.
+const ZZ_C = packHex('#eef4ff'), HEART_C = packHex('#ff6f94'), CHIP_C = ['#b98a5a', '#8a6444', '#d8b080'].map(packHex), DUST_C = packHex('#e6d6b4');
+const GLYPHS = {
+  6: [[0, 0], [1, 0], [2, 0], [3, 0], [2, 1], [1, 2], [0, 3], [1, 3], [2, 3], [3, 3]],
+  7: [[1, 0], [3, 0], [0, 1], [1, 1], [2, 1], [3, 1], [4, 1], [1, 2], [2, 2], [3, 2], [2, 3]],
+};
 const SPARK_C = packHex('#effcff'), ZAP_TINT = packHex('#8fe0ff');
 const GOLD_GLINT = packHex('#fff4c2'), LAMP_ON = packHex('#fff3b8'), LAMP_RIM = packHex('#ffcf5a'), LAMP_OFF = packHex('#857c68');
 const CLOUD_TOP = packHex('#ffffff'), CLOUD_BASE = packHex('#c9c4bb');
@@ -539,6 +548,7 @@ export class Renderer2D {
           }
           case WOOD:
             c = PAL[WOOD][((x + (sh >> 6)) & 3)];
+            if (flags[i] & 2) { c = scale(PAL[WOOD][(y >> 1) & 3], (x & 1) ? 0.55 : 0.62); break; } // a hut's back wall
             if (exposed && run === 0) c = WOOD_TOP;
             if (x > 0 && type[i - 1] === EMPTY) c = scale(c, 1.25);
             else if (x < W - 1 && type[i + 1] === EMPTY) c = scale(c, 0.72);
@@ -720,6 +730,26 @@ export class Renderer2D {
         buf[p] = c;
       }
     }
+    // Huts: fill the open inside with a plank back wall and a window.
+    if (this.life && !thermalView) for (const h of this.life.homes) {
+      const wx0 = h.x0 + 3, wx1 = h.x0 + 5, wy1 = h.y0 + h.hw - 3, wy0 = wy1 - 2;
+      for (let y = h.y0; y < h.y0 + h.hw; y++) {
+        if (y < 0 || y >= H) continue;
+        const row = (H - 1 - y) * W;
+        for (let x = h.x0 + 1; x <= h.x0 + 7; x++) {
+          const i = x + W * y;
+          if (type[i] !== EMPTY || x < 0 || x >= W) continue;
+          const p = row + x;
+          let c = (x - h.x0) % 3 === 0 ? HUT_SEAM : HUT_WALL[(y >> 1) & 1];
+          if (x >= wx0 - 1 && x <= wx1 + 1 && y >= wy0 - 1 && y <= wy1 + 1) c = WINDOW_FRAME;
+          if (x >= wx0 && x <= wx1 && y >= wy0 && y <= wy1) {
+            c = blend(WINDOW_DAY, WINDOW_NIGHT, night);
+            if (night > 0.3) gbuf[p] = scale(WINDOW_NIGHT, night * 0.8);
+          }
+          buf[p] = c;
+        }
+      }
+    }
     // Night: everything that is not lit by its own glow sinks into the dark.
     if (night > 0.003 && !thermalView) {
       const k = night * 0.66;
@@ -777,6 +807,18 @@ export class Renderer2D {
       } else if (e.k === 'splash') {
         const c = PAL[e.t] ? PAL[e.t][1] : WATER_D[1];
         for (let k = 0; k < 5; k++) this.addPart(e.x + 0.5, e.y + 0.5, (Math.random() - 0.5) * 10, 8 + Math.random() * 12, 0.6, c, 1, false);
+      } else if (e.k === 'zz') this.addPart(e.x, e.y, 0.3, 1.4, 2.4, ZZ_C, 6, false);
+      else if (e.k === 'heart') this.addPart(e.x, e.y, 0, 1.6, 1.8, HEART_C, 7, false);
+      else if (e.k === 'born') {
+        for (let k = 0; k < 10; k++) this.addPart(e.x, e.y, (Math.random() - 0.5) * 8, Math.random() * 8, 0.6 + Math.random() * 0.5, k & 1 ? HEART_C : WHITE, 2, true);
+      } else if (e.k === 'chips') {
+        for (let k = 0; k < 3; k++) this.addPart(e.x, e.y, (Math.random() - 0.5) * 10, 4 + Math.random() * 6, 0.6, CHIP_C[k], 1, false);
+      } else if (e.k === 'crumb') {
+        const c = PAL[e.t] ? PAL[e.t][1] : CHIP_C[0];
+        for (let k = 0; k < 2; k++) this.addPart(e.x, e.y, (Math.random() - 0.5) * 5, 2 + Math.random() * 4, 0.45, c, 1, false);
+      } else if (e.k === 'sip') this.addPart(e.x, e.y + 0.6, (Math.random() - 0.5) * 3, 2.5, 0.3, WATER_D[0], 1, false);
+      else if (e.k === 'knock') {
+        for (let k = 0; k < 2; k++) this.addPart(e.x, e.y, (Math.random() - 0.5) * 6, Math.random() * 3, 0.35, DUST_C, 2, false);
       } else if (e.k === 'bolt') {
         this.shake = Math.max(this.shake, 6);
         for (let k = 0; k < 24; k++) this.spark(e.x + 0.5, e.y + 1);
@@ -819,6 +861,7 @@ export class Renderer2D {
         if (d < 1) continue;
         q.vx = (-dy / d * 9 + dx / d * 4) * (8 / (d + 2)); q.vy = (dx / d * 9 + dy / d * 4) * (8 / (d + 2));
       }
+      else if (q.kind >= 6) q.vx = Math.sin(q.ph + q.life * 3) * 0.7; // signs drift up, swaying
       else if (q.kind === 5) {
         q.vx += (Math.random() - 0.5) * 2 * dt; q.vy += Math.sin(q.ph + q.life) * 0.4 * dt;
         q.vx = Math.max(-0.8, Math.min(0.8, q.vx)); q.vy = Math.max(-0.5, Math.min(0.5, q.vy));
@@ -834,7 +877,7 @@ export class Renderer2D {
       if (cx < 0 || cx >= W || cy < 0 || cy >= H) continue;
       const t = type[cx + W * cy];
       // Drops and debris stop at the first solid or liquid they hit.
-      if (t !== EMPTY && STATE[t] !== GAS) {
+      if (q.kind < 6 && t !== EMPTY && STATE[t] !== GAS) {
         if (q.kind === 3) { q.vy = Math.abs(q.vy) + 0.5; q.y += 0.3; }
         else continue;
       }
@@ -855,6 +898,14 @@ export class Renderer2D {
       if (q.kind === 0 && Math.random() < 0.25) continue; // flicker
       const px = (q.x * S) | 0, py = ((H - q.y) * S) | 0;
       if (px < 0 || py < 0 || px >= BW - 1 || py >= BH - 1) continue;
+      if (q.kind >= 6) {
+        if (f < 0.4 && ((q.life * 12) | 0) % 2) continue; // blink out at the end
+        for (const [dx, dy] of GLYPHS[q.kind]) {
+          const gx = px + dx - 2, gy = py + dy - 2;
+          if (gx >= 0 && gy >= 0 && gx < BW && gy < BH) buf[gy * BW + gx] = q.col;
+        }
+        continue;
+      }
       const c = f < 1 && q.kind !== 5 ? blend(q.col, FIRE_P[5], 1 - f) : q.col;
       buf[py * BW + px] = c;
       // Bright sparks and debris are 2×2 while fresh.

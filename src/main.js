@@ -12,6 +12,7 @@ import { drawSwatch } from './swatches.js';
 import { Creatures, SPECIES, SPECIES_ORDER, iconCreature } from './creatures.js';
 import { drawCreature } from './creatureArt.js';
 import { Sound, brushKind } from './sound.js';
+import { Life } from './life.js';
 
 const $ = sel => document.querySelector(sel);
 const app = $('#app');
@@ -58,8 +59,45 @@ const world = new World(size0.W, size0.H);
 forestGlade(world);
 const creatures = new Creatures(world);
 creatures.gore = store.get('gore', true);
+const life = creatures.life = new Life(creatures, world);
+
+// The forest's residents: people, a dog and a cat, a small flock of sheep,
+// chickens, birds, frogs by the pond and fish in it. They live on their own.
+function populate() {
+  const { W, H, type } = world;
+  const top = x => {
+    x = Math.round(x);
+    for (let y = H - 1; y > 0; y--) {
+      const i = world.index(x, y), t = type[i];
+      if (t !== El.EMPTY && t !== El.PLANT && El.STATE[t] !== El.GAS && !(world.flags[i] & 128)) return y + 1; // not on a tree
+    }
+    return 20;
+  };
+  const put = (kind, fx, extra) => {
+    const x = W * fx, y = top(x);
+    if (El.STATE[type[world.index(Math.round(x), y - 1)]] === El.LIQUID && kind !== 'fish' && kind !== 'frog') return;
+    const c = creatures.spawn(kind, x, y);
+    if (extra) extra(c);
+  };
+  const person = c => { c.inv.wood = 12; c.inv.seed = 2; };
+  put('human', 0.22, person); put('human', 0.36, person);
+  put('dog', 0.27); put('cat', 0.86);
+  for (const f of [0.04, 0.08, 0.11]) put('sheep', f);
+  for (const f of [0.29, 0.31, 0.25]) put('chicken', f);
+  put('bird', 0.17); put('bird', 0.93);
+  put('frog', 0.44); put('frog', 0.79);
+  // Fish go in the middle of the pond, under the surface.
+  for (const f of [0.52, 0.58, 0.66]) {
+    const x = Math.round(W * f);
+    let y = H - 1;
+    while (y > 0 && type[world.index(x, y)] !== El.WATER) y--;
+    if (y > 4) creatures.spawn('fish', x, y - 3);
+  }
+}
+populate();
 const r2d = new Renderer2D(stage, world);
 r2d.creatures = creatures;
+r2d.life = life;
 
 const state = {
   selected: { kind: 'el', id: El.SAND },
@@ -269,7 +307,7 @@ function fitWorld() {
   world.resize(W, H);
   r2d.rebuild();
 }
-function resetScene() { dropHeld(); fitWorld(); creatures.clear(); forestGlade(world); r2d.resetZoom(); }
+function resetScene() { dropHeld(); fitWorld(); creatures.clear(); forestGlade(world); populate(); r2d.resetZoom(); }
 function clearScene() { dropHeld(); fitWorld(); creatures.clear(); emptyWorld(world); }
 
 $('#btn-thermal').addEventListener('click', () => {
@@ -670,25 +708,45 @@ function weatherTick(now) {
 }
 
 // ----- time of day -----
-// Day, night, or a slow cycle through both (four minutes a day). The light
-// changes gradually rather than switching.
-const TIMES = ['day', 'night', 'cycle'];
-const TIME_NAMES = { day: 'Day', night: 'Night', cycle: 'Day & night' };
-state.time = TIMES.includes(store.get('time', 'day')) ? store.get('time', 'day') : 'day';
-let nightNow = state.time === 'night' ? 1 : 0, cycleT = 0;
+// A day and night cycle (four minutes a day, following the simulation, so it
+// runs faster at 2× and stops when paused), or always day, or always night.
+// The light changes gradually rather than switching, and the creatures keep
+// to it: most sleep at night, cats and frogs by day.
+const TIMES = ['cycle', 'day', 'night'];
+const TIME_NAMES = { day: 'Always day', night: 'Always night' };
+const DAY_STEPS = 240 * 60;
+// The cycle is now the normal way to play; switch older saved settings over once.
+if (store.get('lifeV', 0) < 1) { store.set('time', 'cycle'); store.set('lifeV', 1); }
+state.time = TIMES.includes(store.get('time', 'cycle')) ? store.get('time', 'cycle') : 'cycle';
+state.steps = 0;          // simulation steps since the game started
+let nightNow = state.time === 'night' ? 1 : 0, clockShown = '';
+// Fraction of the day: 0 is midnight, 0.5 is noon. The game starts at 8 am.
+const dayFrac = () => (state.steps / DAY_STEPS + 1 / 3) % 1;
 function setTime(t) {
   state.time = t;
   store.set('time', t);
-  $('#time-label').textContent = TIME_NAMES[t];
+  clockShown = '';
+  showClock();
   $('#btn-time').dataset.time = t;
+}
+function showClock() {
+  let text = TIME_NAMES[state.time];
+  if (state.time === 'cycle') {
+    const f = dayFrac(), mins = Math.floor(f * 24 * 6) * 10; // to the nearest 10 minutes
+    const day = Math.floor(state.steps / DAY_STEPS + 1 / 3) + 1;
+    text = `Day ${day} · ${String(Math.floor(mins / 60)).padStart(2, '0')}:${String(mins % 60).padStart(2, '0')}`;
+  }
+  if (text !== clockShown) { clockShown = text; $('#time-label').textContent = text; }
 }
 $('#btn-time').addEventListener('click', () => setTime(TIMES[(TIMES.indexOf(state.time) + 1) % TIMES.length]));
 function timeTick(dt) {
-  if (!state.paused) cycleT += dt;
   const target = state.time === 'day' ? 0 : state.time === 'night' ? 1
-    : Math.min(1, Math.max(0, 0.5 - 0.62 * Math.cos(cycleT / 240 * Math.PI * 2)));
+    : Math.min(1, Math.max(0, 0.5 + 0.62 * Math.cos(dayFrac() * Math.PI * 2)));
   nightNow += Math.max(-dt * 0.5, Math.min(dt * 0.5, target - nightNow));
   r2d.setNight(nightNow);
+  life.night = nightNow;
+  life.raining = ['rain', 'storm', 'hail', 'acid'].includes(state.weather);
+  showClock();
 }
 
 // ----- sound -----
@@ -744,7 +802,7 @@ function frame(now) {
     // out, so heavy moments slow the simulation slightly instead of the frame rate.
     const t0 = performance.now();
     let n = 0;
-    while (state.acc >= 1 && n < 3 && (n === 0 || performance.now() - t0 < 10)) { weatherStep(); creatures.tick(); state.acc -= 1; n++; }
+    while (state.acc >= 1 && n < 3 && (n === 0 || performance.now() - t0 < 10)) { weatherStep(); creatures.tick(); state.steps++; state.acc -= 1; n++; }
     if (state.acc > 3) state.acc = 0;
   } else if (state.stepOnce) {
     creatures.tick();
@@ -762,7 +820,7 @@ function frame(now) {
 }
 
 // Handy for poking at the simulation from the browser console.
-window.sandgrove = { world, creatures, r2d, El, sound };
+window.sandgrove = { world, creatures, r2d, El, sound, life, state };
 
 // ----- start -----
 select(state.selected);

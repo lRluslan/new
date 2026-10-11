@@ -217,6 +217,36 @@ export class Sound {
     this.noise({ type: 'lowpass', f0: 500, dur: 0.07, gain: 0.27 * size, pan });
   }
 
+  // Daily life: an axe on wood, a hammer on a plank, nibbling, sipping and
+  // a soft chime when a baby is born.
+  chop(pan) {
+    if (!this.ready() || !this.limit('chop', 0.08)) return;
+    this.tone({ type: 'triangle', f0: 420, f1: 180, dur: 0.07, gain: 0.12, pan });
+    this.noise({ type: 'bandpass', f0: 1500, q: 2, dur: 0.05, gain: 0.12, pan });
+  }
+
+  knock(pan) {
+    if (!this.ready() || !this.limit('knock', 0.08)) return;
+    const f = 300 + Math.random() * 80;
+    this.tone({ type: 'triangle', f0: f, f1: f * 0.7, dur: 0.06, gain: 0.14, pan });
+    this.noise({ type: 'lowpass', f0: 1200, dur: 0.03, gain: 0.08, pan });
+  }
+
+  nibble(pan) {
+    if (!this.ready() || !this.limit('nibble', 0.12)) return;
+    for (let k = 0; k < 2; k++) this.noise({ type: 'bandpass', f0: 2600 + Math.random() * 1200, q: 3, dur: 0.03, gain: 0.07, pan, when: k * 0.07 });
+  }
+
+  sip(pan) {
+    if (!this.ready() || !this.limit('sip', 0.2)) return;
+    this.tone({ f0: 500 + Math.random() * 200, f1: 900, dur: 0.06, gain: 0.05, pan });
+  }
+
+  birth(pan) {
+    if (!this.ready() || !this.limit('birth', 0.5)) return;
+    [784, 988, 1175].forEach((f, k) => this.tone({ type: 'triangle', f0: f, dur: 0.4, gain: 0.06, pan, when: k * 0.1, attack: 0.02 }));
+  }
+
   // A rising chime for a new discovery.
   chime() {
     if (!this.ready()) return;
@@ -241,7 +271,8 @@ export class Sound {
     if (how !== 'die' && now - (this.heard.get(c) ?? -1e9) < (how === 'hurt' ? 0.45 : 2)) return;
     this.heard.set(c, now);
     const die = how === 'die', hurt = how === 'hurt';
-    const up = hurt ? 1.18 : 1, wobble = 0.92 + Math.random() * 0.16;
+    // Babies have higher voices.
+    const up = (hurt ? 1.18 : 1) / Math.sqrt(c.size || 1), wobble = 0.92 + Math.random() * 0.16;
     const n = die ? 1 : v.n || 1;
     for (let k = 0; k < n; k++) {
       this.tone({
@@ -308,6 +339,11 @@ export class Sound {
       else if (e.k === 'bolt') this.thunder(pan(e.x));
       else if (e.k === 'hurt') { this.voice(e.c, 'hurt', pan(e.x)); if (e.jolt > 6) this.thud(pan(e.x), Math.min(1.5, e.jolt / 20)); }
       else if (e.k === 'die') this.voice(e.c, 'die', pan(e.x));
+      else if (e.k === 'chips') this.chop(pan(e.x));
+      else if (e.k === 'knock') this.knock(pan(e.x));
+      else if (e.k === 'crumb') this.nibble(pan(e.x));
+      else if (e.k === 'sip') this.sip(pan(e.x));
+      else if (e.k === 'born') { this.birth(pan(e.x)); if (e.c) this.voice(e.c, 'idle', pan(e.x)); }
     }
     if (blast) this.boom(blast.r, pan(blast.x));
   }

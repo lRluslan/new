@@ -59,7 +59,7 @@ export function drawCreature(c, o) {
   const sp = c.sp, pal = palette(c);
   const tint = o.tint;
   const X = wx => (wx - x0) * S, Y = wy => (y0 - wy) * S;
-  const k0 = sp.rootK, h = sp.headK, nk = sp.neckK;
+  const k0 = sp.rootK, h = sp.headK, nk = sp.neckK, z = c.size ?? 1;
   const facing = c.facing;
   // Drawing order: far arm and leg, body, near arm and leg, wing, head.
   const layer = k => FAR_SIDE[c.limb[k]] ? 0 : c.limb[k] === ARM_R || c.limb[k] === LEG_R ? 2 : 1;
@@ -122,12 +122,13 @@ export function drawCreature(c, o) {
   const ul = Math.hypot(ux, uy) || 1; ux /= ul; uy /= ul;
   // Animals: the head tilts with the whole body rather than with a neck.
   if (ANIMAL[sp.head]) {
-    const rf = sp.rest[h][0] - sp.rest[k0][0], ru = sp.rest[h][1] - sp.rest[k0][1];
+    const rf = (sp.rest[h][0] - sp.rest[k0][0]) * z, ru = (sp.rest[h][1] - sp.rest[k0][1]) * z;
     const rot = Math.atan2(c.py[h] - c.py[k0], c.px[h] - c.px[k0]) - Math.atan2(ru, rf * facing);
     ux = -Math.sin(rot); uy = Math.cos(rot);
   }
   const fwx = uy * facing, fwy = -ux * facing; // forward in world units (x right, y up)
-  const HR = sp.headR * S;
+  // Babies have big heads for their size.
+  const HR = sp.headR * S * Math.sqrt(z);
 
   const drawPart = (p, outline) => {
     if (p.kind === 'stick') {
@@ -135,7 +136,7 @@ export function drawCreature(c, o) {
       let col = pal[s.color] ?? pal.body;
       if (p.far && !outline) col = scale(col, 0.8);
       const k = c.wound[s.a] > c.wound[s.b] ? s.a : s.b;
-      line(X(c.px[s.a]), Y(c.py[s.a]), X(c.px[s.b]), Y(c.py[s.b]), Math.max(0.6, s.thick * S / 2), col, k, outline);
+      line(X(c.px[s.a]), Y(c.py[s.a]), X(c.px[s.b]), Y(c.py[s.b]), Math.max(0.6, s.thick * S / 2 * Math.max(0.65, z)), col, k, outline);
       if (!outline && c.colors.torn && s.color === 'shirt') {
         // Rips in a zombie's clothes.
         const mx = X((c.px[s.a] + c.px[s.b]) / 2), my = Y((c.py[s.a] + c.py[s.b]) / 2);
@@ -145,10 +146,10 @@ export function drawCreature(c, o) {
     } else if (p.kind === 'dot') {
       let col = pal[p.d.color];
       if (p.far && !outline) col = scale(col, 0.8);
-      disc(X(c.px[p.d.k]), Y(c.py[p.d.k]), p.d.r * S, col, p.d.k, outline);
+      disc(X(c.px[p.d.k]), Y(c.py[p.d.k]), p.d.r * S * Math.max(0.65, z), col, p.d.k, outline);
     } else if (p.kind === 'wing') {
       const flap = c.flapping ? Math.sin(c.age * 0.9) * 0.5 : 0;
-      disc(X(c.px[k0] - 0.1 * facing), Y(c.py[k0] + 0.15 + flap), 0.62 * S, pal.tail, k0, outline);
+      disc(X(c.px[k0] - 0.1 * facing), Y(c.py[k0] + 0.15 + flap), 0.62 * S * Math.max(0.65, z), pal.tail, k0, outline);
     } else drawHead(outline);
   };
 

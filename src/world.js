@@ -23,6 +23,10 @@ const GRAVITY = 0.3;   // cells per step², so falling things speed up
 const MAX_SPEED = 7;   // terminal velocity in cells per step
 const BURNING = 4;     // flag bit: this cell is on fire
 const GROWING = 8;     // flag bit: tip of a growing tree
+export const NATURAL_SEED = 77; // life value of a seed a tree dropped by itself
+// flag bits for scenery wood that creatures walk past rather than into:
+export const PASS = 128;    // tree trunks and branches, and the back walls of huts
+export const BACKWALL = 2;  // a hut's back wall (drawn darker)
 const RESTING = 16;    // flag bit: a liquid that found nowhere to go; skipped until a neighbour changes
 const SPARK = 32;      // flag bit: an electric pulse is in this wire cell right now
 const ZAPPED = 64;     // flag bit: a pulse just passed; the wire rests a moment so the pulse runs one way
@@ -1206,6 +1210,12 @@ export class World {
     const below = this.type[i - this.W];
     const T = this.temp[i];
     if (T < 4 || T > 45) return;
+    // A seed a tree dropped by itself (life NATURAL_SEED) only takes root
+    // where there is room for a new tree; under other trees it slowly rots.
+    if (this.life[i] === NATURAL_SEED && this.treeNear(x, y, 9)) {
+      if (Math.random() < 0.0006) this.set(i, EMPTY);
+      return;
+    }
     const wet = this.hasNeighbor(i, x, y, WATER);
     let chance = 0;
     if (below === MUD) chance = 0.05;
@@ -1213,7 +1223,7 @@ export class World {
     else if (below === SAND || below === PLANT) chance = wet ? 0.01 : 0;
     if (Math.random() >= chance) return;
     this.morph(i, WOOD);
-    this.flags[i] = GROWING;
+    this.flags[i] = GROWING | PASS;
     this.life[i] = 16 + ((Math.random() * 22) | 0);
     // Water touching the seed is drunk by the sprouting tree.
     if (wet) {
@@ -1221,6 +1231,16 @@ export class World {
       if (n >= 0 && this.type[n] === WATER) this.set(n, EMPTY);
     }
     this.discover(DISC.SPROUT);
+  }
+
+  // Is there tree wood within r columns of (x, y), at or above it?
+  treeNear(x, y, r) {
+    const { W, H, type } = this;
+    for (let dy = 0; dy < 14 && y + dy < H; dy++) for (let dx = -r; dx <= r; dx++) {
+      const nx = x + dx;
+      if (nx >= 0 && nx < W && type[nx + W * (y + dy)] === WOOD) return true;
+    }
+    return false;
   }
 
   growTree(i, x, y) {
@@ -1238,17 +1258,17 @@ export class World {
     const o = type[j];
     if (o !== EMPTY && o !== PLANT && o !== WATER && STATE[o] !== GAS) { this.leaves(x, y); return; }
     this.set(j, WOOD, AMBIENT);
-    this.flags[j] = GROWING;
+    this.flags[j] = GROWING | PASS;
     this.life[j] = left - 1;
     this.stamp[j] = this.clock;
     // Thicker trunk near the ground.
-    if (left > 18 && x + 1 < W && type[i + 1] === EMPTY) this.set(i + 1, WOOD, AMBIENT);
+    if (left > 18 && x + 1 < W && type[i + 1] === EMPTY) { this.set(i + 1, WOOD, AMBIENT); this.flags[i + 1] |= PASS; }
     // Occasional side branch.
     if (left < 14 && left > 4 && Math.random() < 0.18) {
       const bx = x + (Math.random() < 0.5 ? -2 : 2);
       if (bx >= 0 && bx < W) {
         const b = bx + W * (y + 1);
-        if (type[b] === EMPTY) { this.set(b, WOOD, AMBIENT); this.flags[b] = GROWING; this.life[b] = (left * 0.5) | 0; }
+        if (type[b] === EMPTY) { this.set(b, WOOD, AMBIENT); this.flags[b] = GROWING | PASS; this.life[b] = (left * 0.5) | 0; }
       }
     }
   }

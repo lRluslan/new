@@ -5,6 +5,7 @@
 // whatever size the screen makes the world.
 
 import { STONE, DIRT, SAND, WATER, WOOD, PLANT, EMPTY } from './elements.js';
+import { PASS } from './world.js';
 
 export function rng(seed) {
   let a = seed >>> 0;
@@ -48,7 +49,15 @@ function blob(w, cx, cy, rx, ry, t, rand, rough = 0.5) {
 }
 
 function tree(w, x0, ground, height, crown, rand) {
-  const put = (x, y) => { if (x >= 0 && x < w.W && y >= 0 && y < w.H) w.set(w.index(x, y), WOOD); };
+  // Tree wood above the ground is scenery: creatures walk in front of
+  // trunks. The roots under the ground stay solid.
+  const put = (x, y) => {
+    if (x < 0 || x >= w.W || y < 0 || y >= w.H) return;
+    const i = w.index(x, y);
+    if (y >= ground && w.type[i] !== EMPTY && w.type[i] !== PLANT) return; // never carve into a hillside
+    w.set(i, WOOD);
+    if (y >= ground) w.flags[i] |= PASS;
+  };
   let x = x0;
   for (let y = ground - 1; y < Math.min(w.H - 2, ground + height); y++) {
     const f = (y - ground) / height;
@@ -85,7 +94,10 @@ export function forestGlade(w) {
   const { W, H } = w;
   const rand = rng(11);
   const pondX = W * 0.6, pondR = W * 0.17;
-  const level = Math.round(H * 0.3) - 2;
+  // The water line sits just below the lowest ground around the pond, so
+  // only the pond holds water and the land on both sides stays dry.
+  let level = Math.round(H * 0.3) - 2;
+  for (let x = 0; x < W; x++) if (Math.abs(x - pondX) / pondR >= 1) level = Math.min(level, Math.round(groundHeight(x, W, H)) - 1);
   const depth = Math.max(8, Math.round(H * 0.1));
   const ground = new Int32Array(W);
   for (let x = 0; x < W; x++) {
@@ -100,21 +112,23 @@ export function forestGlade(w) {
     const h = ground[x];
     const soil = Math.round(H * 0.1 + 2 * Math.sin(x * 0.05 + 2));
     const d = Math.abs(x - pondX) / pondR;
-    const sandy = d < 1.18 || h <= level ? (d > 0.85 ? 3 : 2) : 0; // the pond bed is sand
+    const sandy = d < 1.18 ? (d > 0.85 ? 3 : 2) : 0; // the pond bed is sand
     for (let y = 0; y < h; y++) w.set(w.index(x, y), y >= h - sandy ? SAND : y < h - soil ? STONE : DIRT);
-    for (let y = h; y <= level; y++) w.set(w.index(x, y), WATER);
+    if (d < 1) for (let y = h; y <= level; y++) w.set(w.index(x, y), WATER);
   }
 
   // Wooden dock across the pond, with posts down to the bed.
   const dockY = level + 4;
   const dock0 = Math.round(pondX + pondR * 0.05), dock1 = Math.min(W - 1, Math.round(pondX + pondR * 1.15));
   for (let x = dock0; x <= dock1; x++) w.set(w.index(x, dockY), WOOD);
+  // Posts and stumps are scenery that swimmers pass in front of.
+  const post = (x, y) => { const i = w.index(x, y); w.set(i, WOOD); w.flags[i] |= PASS; };
   for (let x = dock0 + 2; x < dock1; x += 8)
-    for (let y = g(x) - 1; y < dockY; y++) w.set(w.index(x, y), WOOD);
+    for (let y = g(x) - 1; y < dockY; y++) post(x, y);
   // Log stumps standing in the water.
   for (const fx of [-0.62, -0.42, -0.22]) {
     const x = Math.round(pondX + pondR * fx);
-    for (let y = g(x) - 1; y <= level + 2; y++) for (let dx = 0; dx < 3; dx++) w.set(w.index(x + dx, y), WOOD);
+    for (let y = g(x) - 1; y <= level + 2; y++) for (let dx = 0; dx < 3; dx++) post(x + dx, y);
   }
 
   // A stand of trees: a big one on the left, a young one beside it and one
@@ -122,16 +136,30 @@ export function forestGlade(w) {
   tree(w, Math.round(W * 0.13), g(W * 0.13), Math.round(H * 0.38), Math.round(H * 0.13), rand);
   tree(w, Math.round(W * 0.33), g(W * 0.33), Math.round(H * 0.26), Math.round(H * 0.085), rand);
   tree(w, Math.round(W * 0.91), g(W * 0.91), Math.round(H * 0.32), Math.round(H * 0.11), rand);
-  for (const fx of [0.03, 0.4, 0.83, 0.98]) {
+  for (const fx of [0.03, 0.4, 0.87]) {
     const x = Math.round(W * fx);
     blob(w, x, g(x) + 2, H * 0.045 + rand() * 3, H * 0.032 + rand() * 1.5, PLANT, rand, 0.45);
   }
-  const l0 = Math.round(W * 0.2), l1 = Math.round(W * 0.27);
-  for (let x = l0; x <= l1; x++) {
-    const base = Math.max(g(l0), g(l1));
-    for (let y = base; y < base + 3; y++) if (!(x === l0 && y === base + 2) && !(x === l1 && y === base + 2)) w.set(w.index(x, y), WOOD);
+  // Two fallen logs (good wood for building), each on the flattest stretch
+  // of ground in its area so animals can hop over them.
+  const len = Math.max(8, Math.round(W * 0.05));
+  for (const [f0, f1] of [[0.17, 0.3], [0.8, 0.97]]) {
+    let best = -1, bestBump = Infinity;
+    for (let l0 = Math.round(W * f0); l0 + len <= Math.round(W * f1); l0++) {
+      let lo = Infinity, hi = -Infinity;
+      for (let x = l0 - 3; x <= l0 + len + 3; x++) { lo = Math.min(lo, g(x)); hi = Math.max(hi, g(x)); }
+      if (hi - lo < bestBump) { bestBump = hi - lo; best = l0; }
+    }
+    if (best < 0) continue;
+    let base = 0;
+    for (let x = best; x <= best + len; x++) base = Math.max(base, g(x));
+    const thick = bestBump > 1 ? 2 : 3; // never more than a hop above the ground beside it
+    for (let x = best; x <= best + len; x++) for (let y = g(x); y < base + thick; y++) {
+      const end = x === best || x === best + len;
+      if (!(end && y === base + thick - 1)) w.set(w.index(x, y), WOOD);
+    }
   }
-  for (const fx of [0.07, 0.29, 0.79]) {
+  for (const fx of [0.07, 0.29, 0.97]) {
     const x = Math.round(W * fx);
     blob(w, x, g(x), 3 + rand() * 1.5, 2.2, STONE, rand, 0.25);
   }

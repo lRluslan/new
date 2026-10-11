@@ -12,8 +12,8 @@ world is made to match the shape and size of your screen (about 5 screen
 pixels per cell). Reset or Clear fits it again if you have resized the window.
 Zoom in with the scroll wheel or a pinch to see the details.
 
-There are 63 reactions to discover, such as obsidian, boiling, glassmaking, brickmaking, charcoal,
-thermite, casting, rust, lightning, explosions, concrete, fireworks, electricity, popcorn, diamonds, meltdowns, drowning and zombie infection. The **Discoveries** button in the top right keeps track of them.
+There are 67 things to discover, such as obsidian, boiling, glassmaking, brickmaking, charcoal,
+thermite, casting, rust, lightning, explosions, concrete, fireworks, electricity, popcorn, diamonds, meltdowns, drowning, zombie infection, new babies, homes, tree planting and the food chain. The **Discoveries** button in the top right keeps track of them.
 
 ### The look
 
@@ -66,12 +66,15 @@ The **Creatures** group in the palette has five kinds of little ragdoll creature
 | **Zombie** | Shambles after people. A bite turns a person into a zombie a few seconds later. Does not breathe, so it walks along the bottom of ponds. Burns easily. |
 | **Robot** | Heavy and tough. Fire hardly bothers it, but it sinks in water, leaks oil when hurt, and acid eats it fast. |
 | **Chicken** | Scurries away from everyone. Light enough to float, and flaps its wings so falls do not hurt it. |
-| **Dog** | Trots about on four legs and loves chasing chickens (it only plays). Paddles when it falls in water. |
+| **Dog** | Trots about on four legs and follows people around; they share their food with it. Paddles when it falls in water. |
 | **Bird** | Perches, then flies about at a cruising height. Takes off at the first sign of danger and glides down gently. |
 | **Frog** | Hops along and swims. Breathes air or water, so it never drowns, but its skin is sensitive to acid. |
-| **Cat** | Quick and nimble. Hunts birds, always lands on its feet (falls barely hurt), runs from dogs and hates water. |
+| **Cat** | Quick and nimble. When hungry it hunts birds, frogs and chickens. Always lands on its feet (falls barely hurt), runs from dogs and hates water. |
 | **Sheep** | Grazes on grass, leaves and bushes, a mouthful at a time, and runs from dogs. Its wool catches fire very easily. |
 | **Fish** | Swims in water. On land it flops about and soon suffocates. |
+
+The forest starts with residents: two people, a dog, a cat, three sheep, three chickens, two birds, two frogs and
+three fish. They live on their own (see *Life in the forest* below).
 
 Pick one and click to drop it in. With a creature or the **Grab** tool (`G`) selected, click and drag a creature to pick
 it up. Let go to drop it, or flick the mouse to throw it. The **Eraser** (or right mouse) removes creatures.
@@ -103,6 +106,42 @@ soaks into clothes, blunt hits leave bruises, and blood sprays out in arcs from 
 It is real liquid: it runs, pools, mixes into water and dries into dark stains after about half a minute. A limb hit
 hard enough can be torn off, leaving a raw stump with the bone showing. After death the heart stops, so blood only
 oozes. With Blood off, creatures just flash when hurt (they are still injured and bleed internally).
+
+### Life in the forest
+
+Creatures live on their own, and the forest keeps going around them. Leave the game running and watch.
+
+**Day and night.** The **Time** button at the bottom shows the clock, such as "Day 2 · 07:30". A day lasts four
+minutes (faster at 2×, and the clock stops while paused). Click the button to switch to *Always day* or *Always
+night* instead.
+
+**Needs.** Every animal slowly gets hungry, thirsty and tired, and looks after itself:
+
+- **Eating:** sheep graze grass and bushes, chickens and birds peck seeds and grass, people pick berries from the
+  bushes (or eat corn, popcorn and honey if you leave some out), and hungry cats hunt birds, frogs and chickens. Dogs
+  follow people, who share their food with them.
+- **Drinking:** they walk to the pond and drink from the bank.
+- **Sleeping:** most sleep at night, lying down or curled up (watch for the little "z"). Cats and frogs sleep by day.
+  A sleeper wakes at once if fire or danger comes close.
+
+**People** gather wood from fallen logs and posts (you will see chips fly), then build a little wooden hut, plank by
+plank. They sleep there at night, its window glows, and they shelter there when it rains. They pick up seeds that
+fall from the trees and plant them on open soil, so new trees grow. They stop to chat with each other, too.
+
+**Babies.** Two well-fed grown-ups of the same kind that are close together have a baby (with a little heart). Babies
+are small, stay near their mother and grow up over a day or two. There is a limit for each kind so the forest does
+not overflow, and old animals eventually die of old age.
+
+**The ecosystem.** In daylight, grass grows back on open soil and trees drop seeds. Seeds that land where there is room
+grow into new trees. Plant eaters keep the grass down, hunters keep the small animals in check, and bodies return to
+the soil after a while.
+
+**Reacting.** Animals run from fire, lava and hunters, and fear spreads: when one runs, those nearby run too. Land
+animals stay out of deep water, and climb out quickly if they fall in. They hop over logs and low steps, and walk in
+front of tree trunks and through bushes, like in a side-on game.
+
+Hover over a creature to see what it is doing and how it feels: for example "Sheep · grazing · thirsty" or
+"Human · building a home · 23 planks · has a home".
 
 ---
 
@@ -361,6 +400,7 @@ catches fire. Many times a second, every cell:
 | `src/elements.js` | Every element and its real-world numbers, plus the discoveries list. Change numbers here to change how things behave. |
 | `src/world.js` | The physics engine. |
 | `src/creatures.js` | The creatures: their ragdoll bodies, muscles, behaviour and everything that can hurt them. |
+| `src/life.js` | Daily life and the ecosystem: hunger, thirst and sleep, eating, drinking, building huts, planting trees, babies, grass growing back. |
 | `src/creatureArt.js` | Draws the creatures as pixel art, in the world and on the buttons. |
 | `src/scenes.js` | How big the world is for your screen, and the starting scene (a forest glade with a pond, dock, trees and a fallen log). |
 | `src/render2d.js` | Draws the world as pixel art: the forest background, every element's colours, the little effects, zoom and the thermal camera. |

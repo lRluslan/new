@@ -31,6 +31,7 @@ export const DISC = {
   FIREWORK: 48, RAIN_CLOUD: 49, ELECTRIC: 50, LAMP: 51, SHOCK: 52,
   MELTDOWN: 53, HYDROGEN: 54, POPCORN: 55, DIAMOND: 56, NEUTRALIZE: 57, BOUNCE: 58, GRAZE: 59,
   SUBLIME: 60, BLACK_HOLE: 61, BLOOM: 62, METEOR: 63,
+  BIRTH: 64, HOME: 65, FORESTER: 66, FOOD_CHAIN: 67,
 };
 
 export const DISCOVERIES = [
@@ -160,6 +161,14 @@ export const DISCOVERIES = [
     text: 'A flower seed on soil sends up a stem and opens a bloom.' },
   { id: DISC.METEOR, title: 'Impact', recipe: 'Meteor', hint: 'Call down a meteor.',
     text: 'A meteor hits the ground at tens of kilometres per second, blasting out a crater and scattering molten rock.' },
+  { id: DISC.BIRTH, title: 'New life', recipe: 'Two well-fed animals', hint: 'Keep a pair of animals fed and safe for a while.',
+    text: 'Two grown-up animals of the same kind that have eaten well have a baby. It starts small and grows up over a couple of days.' },
+  { id: DISC.HOME, title: 'Home sweet home', recipe: 'A person + wood', hint: 'Leave people alone long enough to gather wood.',
+    text: 'People gather wood and build a little hut, plank by plank. They sleep there at night and shelter there from the rain.' },
+  { id: DISC.FORESTER, title: 'Tree planter', recipe: 'A person + a seed', hint: 'People pick up seeds that fall from trees.',
+    text: 'People and robots plant the seeds they collect. On soil a seed grows into a new tree, so the forest keeps going.' },
+  { id: DISC.FOOD_CHAIN, title: 'Food chain', recipe: 'A hungry hunter', hint: 'Let a cat or a dog go hungry near smaller animals.',
+    text: 'Plants feed the plant eaters, and hungry cats and dogs hunt the small animals. Each eats the one below it.' },
 ];
 
 // Look up a discovery by its id (ids stay stable even if one is retired).

@@ -624,6 +624,7 @@ kbd {
 .info-icon.tool-grab { color: var(--accent); }
 #btn-gore[aria-pressed="true"] { color: #e8604a; }
 #btn-sound .mute { display: none; }
+#time-label { font-variant-numeric: tabular-nums; }
 #btn-sound[aria-pressed="false"] { color: var(--faint); }
 #btn-sound[aria-pressed="false"] .wave { display: none; }
 #btn-sound[aria-pressed="false"] .mute { display: inline; }
@@ -634,7 +635,7 @@ kbd {
 .info-icon.tool-bomb { color: #ff8a5a; }
 .info-icon.tool-bolt { color: #b8e4ff; }
 .info-icon.tool-wind { color: #cfe8e0; }
-#btn-time[data-time="night"], #btn-time[data-time="cycle"] { color: #b8c8ff; }
+#btn-time[data-time="night"] { color: #b8c8ff; }
 
 /* Mid-size screens: a compact discoveries chip so it never meets the top bar. */
 @media (max-width: 1100px) and (min-width: 761px) {
