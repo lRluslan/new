@@ -12,8 +12,8 @@ world is made to match the shape and size of your screen (about 5 screen
 pixels per cell). Reset or Clear fits it again if you have resized the window.
 Zoom in with the scroll wheel or a pinch to see the details.
 
-There are 39 reactions to discover, such as obsidian, boiling, glassmaking, brickmaking, charcoal,
-thermite, casting, rust, lightning, explosions, drowning and zombie infection. The **Discoveries** button in the top right keeps track of them.
+There are 52 reactions to discover, such as obsidian, boiling, glassmaking, brickmaking, charcoal,
+thermite, casting, rust, lightning, explosions, concrete, fireworks, electricity, drowning and zombie infection. The **Discoveries** button in the top right keeps track of them.
 
 ### Creatures
 
@@ -25,6 +25,9 @@ The **Creatures** group in the palette has five kinds of little ragdoll creature
 | **Zombie** | Shambles after people. A bite turns a person into a zombie a few seconds later. Does not breathe, so it walks along the bottom of ponds. Burns easily. |
 | **Robot** | Heavy and tough. Fire hardly bothers it, but it sinks in water, leaks oil when hurt, and acid eats it fast. |
 | **Chicken** | Scurries away from everyone. Light enough to float, and flaps its wings so falls do not hurt it. |
+| **Dog** | Trots about on four legs and loves chasing chickens (it only plays). Paddles when it falls in water. |
+| **Bird** | Perches, then flies about at a cruising height. Takes off at the first sign of danger and glides down gently. |
+| **Frog** | Hops along and swims. Breathes air or water, so it never drowns, but its skin is sensitive to acid. |
 | **Fish** | Swims in water. On land it flops about and soon suffocates. |
 
 Pick one and click to drop it in. With a creature or the **Grab** tool (`G`) selected, click and drag a creature to pick
@@ -136,7 +139,7 @@ GitHub Pages is free for public projects. For a private project it needs a paid 
 | Creatures | Pick one and click to drop it in. Drag one to carry or throw it | The same, with one finger |
 
 Keys:
-- `1` to `0` pick elements. `E` is the eraser, `H` heat, `J` cool, `G` grab.
+- `1` to `0` pick elements. `E` is the eraser, `H` heat, `J` cool, `G` grab, `B` bomb, `L` lightning, `W` wind.
 - `Space` pauses, `.` moves one step forward.
 - `R` resets the world and `C` clears it.
 - `T` turns on the thermal camera. The **View** button zooms back out to the whole world.
@@ -173,17 +176,53 @@ stays molten on top for minutes.
 - **Mercury** is the densest liquid (13,534 kg/m³). Sand, stone and even molten
   iron float on it. It boils away at 357 °C.
 - **Honey** is a very thick, slow liquid.
-- **Fuse** burns slowly along its length, so you can light one end and stand back.
+- **Fuse** burns quickly along its length, carrying the flame from one end to the other.
 
 **Machines** (in their own group in the palette):
 - **Cloner:** touch it with any element and it starts making copies of that element.
 - **Drain:** deletes whatever touches it, like a plughole.
 
-**Weather:** the **Weather** button at the bottom switches between Clear, Rain,
+**Weather:** the **Weather** button at the bottom switches between Sunny, Rain,
 Storm and Snow. In a storm, lightning strikes every few seconds. It sets trees
 on fire and fuses sand into glass where it hits.
 
+**The newest additions:**
+
+| | |
+|---|---|
+| **Gravel** | Small stones. Heavier than sand, piles up in steep heaps. |
+| **Cement** | Flows slowly, then sets into **Concrete** after about ten seconds, even under water. |
+| **Napalm** | Jellied fuel. Clings, burns at about 1300 °C for a long time, and floats on water, so water cannot put it out. |
+| **Liquid nitrogen** | At -196 °C it boils away fast, freezing water (and creatures) it touches. |
+| **Slime** | Very thick goo. Anything that falls in gets stuck. |
+| **Cloud** | Drifts with the wind and rains, or snows when it is freezing. |
+| **Wax** | Melts at 62 °C and burns slowly like a candle. |
+| **Gold** | Never rusts and acid cannot touch it. Conducts electricity. Melts at 1064 °C. |
+| **Nitroglycerin** | Liquid explosive. A hard bump sets it off, not just heat. Keep it in a cup! |
+| **C4** | Plastic explosive. Safe to drop, but heat or a spark sets off a huge blast. |
+| **Firework** | Light it and it rockets up and bursts into coloured stars. |
+| **Fungus** | Creeps over damp ground and rots wood into more fungus. Glows faintly at night. |
+| **Battery** | Sends pulses of electricity along metal or gold wires. You can watch the pulse run. Sparks set off gunpowder, fuses and C4, and a creature touching a live wire gets a shock. |
+| **Lamp** | Lights up while a wire from a battery powers it. |
+
+New tools: **Bomb** (`B`, click for an explosion; a bigger brush makes a bigger blast), **Lightning** (`L`, click to
+call down a bolt) and **Wind** (`W`, hold to blow sand, water, smoke, fire and creatures away from the pointer).
+
+**Day and night:** the moon button at the bottom switches between Day, Night, and Day & night (a full day every four
+minutes). At night the sky fills with stars, fireflies come out, and anything glowing (fire, lava, lamps, live
+wires, fireworks, fungus) lights up the dark.
+
+**Smoother visuals:** the game now runs one physics step per screen frame (60 a second) so movement is even, zooming
+glides smoothly, fire throws off embers, lava pops, splashes spray, explosions throw glowing debris and shake the
+screen, and fireworks fill the sky with stars.
+
 More things to try:
+- Build a battery, a long metal wire and a lamp, then switch to Night.
+- Lay a gold wire from a battery to a block of C4, and stand well back.
+- Launch a row of fireworks at night.
+- Pour cement into the pond and watch it set under water.
+- Pour liquid nitrogen onto the pond.
+- Drop a dog next to a few chickens.
 - Put thermite on a metal plate and heat it.
 - Drop sand onto a pool of mercury and watch it float.
 - Lay a fuse from a fire to a pile of gunpowder.

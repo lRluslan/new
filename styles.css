@@ -177,6 +177,9 @@ button { font: inherit; color: inherit; }
   touch-action: none;
 }
 .sim2d { cursor: none; }
+.sim2d[data-cursor="grab"] { cursor: grab; }
+.sim2d[data-cursor="grab"]:active { cursor: grabbing; }
+.sim2d[data-cursor="crosshair"] { cursor: crosshair; }
 .glow2d {
   pointer-events: none;
   image-rendering: auto;
@@ -346,7 +349,8 @@ button { font: inherit; color: inherit; }
 .inspector {
   position: absolute;
   left: 14px;
-  bottom: 14px;
+  bottom: 76px;
+  max-width: min(360px, calc(100% - 28px));
   z-index: 5;
   display: flex;
   align-items: center;
@@ -364,7 +368,7 @@ button { font: inherit; color: inherit; }
 .thermal-legend {
   position: absolute;
   left: 14px;
-  bottom: 62px;
+  bottom: 120px;
   z-index: 5;
   display: flex;
   align-items: center;
@@ -588,3 +592,17 @@ kbd {
 .el canvas.mob-icon { background: #1b2324; }
 .info-icon.tool-grab { color: var(--accent); }
 #btn-gore[aria-pressed="true"] { color: #e8604a; }
+.tool-grab i { color: var(--accent); }
+.tool-bomb i { color: #ff8a5a; background: #2a1814; }
+.tool-bolt i { color: #b8e4ff; background: #141c2a; }
+.tool-wind i { color: #cfe8e0; background: #15201e; }
+.info-icon.tool-bomb { color: #ff8a5a; }
+.info-icon.tool-bolt { color: #b8e4ff; }
+.info-icon.tool-wind { color: #cfe8e0; }
+#btn-time[data-time="night"], #btn-time[data-time="cycle"] { color: #b8c8ff; }
+
+/* Mid-size screens: a compact discoveries chip so it never meets the top bar. */
+@media (max-width: 1100px) and (min-width: 761px) {
+  .disc-chip .label { display: none; }
+  .disc-chip { padding: 8px 11px 9px; }
+}

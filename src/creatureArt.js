@@ -23,6 +23,17 @@ const BAR = [packHex('#d8452c'), packHex('#e8b53a'), packHex('#7cc04a')];
 const BUBBLE = packHex('#e8fbf6');
 const VISOR = packHex('#252b33'), ANTENNA = packHex('#e2503a');
 
+// Head shapes: extra blobs on the head (forward, up, radius, all in head
+// radii, and colour), and where the eye sits.
+const ANIMAL = { dog: 1, bird: 1, frog: 1 };
+const HEAD_EXTRAS = {
+  chicken: [[-0.2, 0.95, 0.42, 'comb'], [1.05, 0, 0.4, 'beak']],
+  dog: [[0.95, -0.25, 0.58, 'body'], [-0.35, 0.55, 0.45, 'ear']],
+  bird: [[1.05, -0.05, 0.38, 'beak']],
+  frog: [[0.15, 0.78, 0.42, 'body']],
+};
+const EYE_AT = { dog: [0.45, 0.25], frog: [0.2, 0.85], bird: [0.4, 0.15] };
+
 function hash(x, y) {
   let h = (Math.imul(x, 374761393) + Math.imul(y, 668265263)) | 0;
   h = Math.imul(h ^ (h >>> 13), 1274126177);
@@ -98,6 +109,12 @@ export function drawCreature(c, o) {
   let ux = c.px[h] - c.px[nk], uy = c.py[h] - c.py[nk];
   if (sp.head === 'fish') { ux = -(c.py[h] - c.py[nk]) * facing; uy = (c.px[h] - c.px[nk]) * facing; }
   const ul = Math.hypot(ux, uy) || 1; ux /= ul; uy /= ul;
+  // Animals: the head tilts with the whole body rather than with a neck.
+  if (ANIMAL[sp.head]) {
+    const rf = sp.rest[h][0] - sp.rest[k0][0], ru = sp.rest[h][1] - sp.rest[k0][1];
+    const rot = Math.atan2(c.py[h] - c.py[k0], c.px[h] - c.px[k0]) - Math.atan2(ru, rf * facing);
+    ux = -Math.sin(rot); uy = Math.cos(rot);
+  }
   const fwx = uy * facing, fwy = -ux * facing; // forward in world units (x right, y up)
   const HR = sp.headR * S;
 
@@ -149,12 +166,12 @@ export function drawCreature(c, o) {
       return;
     }
     const r = HR;
+    // Head-relative position (forward, up, in head radii) to buffer pixels.
+    const at = (f, u) => [hx + (fwx * f + ux * u) * r, hy - (fwy * f + uy * u) * r];
+    const extras = HEAD_EXTRAS[style] || [];
     if (outline) {
       disc(hx, hy, r, 0, h, true);
-      if (style === 'chicken') {
-        disc(hx + ux * r * 0.95 - fwx * r * 0.2, hy - uy * r * 0.95 + fwy * r * 0.2, r * 0.42, 0, h, true);
-        disc(hx + fwx * r * 1.05, hy - fwy * r * 1.05, r * 0.4, 0, h, true);
-      }
+      for (const [f, u, rad] of extras) { const [px, py] = at(f, u); disc(px, py, r * rad, 0, h, true); }
       return;
     }
     // Round head: skin with hair on top and at the back.
@@ -163,20 +180,20 @@ export function drawCreature(c, o) {
       const dx = px + 0.5 - hx, dy = -(py + 0.5 - hy);
       if (dx * dx + dy * dy > r2) continue;
       const lu = (dx * ux + dy * uy) / r, lf = (dx * fwx + dy * fwy) / r;
-      let col = style === 'chicken' ? pal.body : pal.skin;
+      let col = style === 'round' || style === 'box' ? pal.skin : pal.body;
       if (style === 'round' && (lu > 0.28 || (lf < -0.3 && lu > -0.45))) {
         col = pal.hair;
         if (c.colors.torn && hash(px, py) < 0.3) col = pal.skin; // patchy
       }
       put(px, py, shadeOf(col, h, px, py));
     }
-    if (style === 'chicken') {
-      disc(hx + ux * r * 0.95 - fwx * r * 0.2, hy - uy * r * 0.95 + fwy * r * 0.2, r * 0.42, pal.comb, h, false);
-      disc(hx + fwx * r * 1.05, hy - fwy * r * 1.05, r * 0.4, pal.beak, h, false);
-      put(Math.floor(hx + fwx * r * 0.75 - ux * r * 0.55), Math.floor(hy - fwy * r * 0.75 + uy * r * 0.55), shadeOf(pal.comb, h, 0, 0));
-    }
+    for (const [f, u, rad, key] of extras) { const [px, py] = at(f, u); disc(px, py, r * rad, pal[key], h, false); }
+    if (style === 'chicken') { const [px, py] = at(0.75, -0.55); put(Math.floor(px), Math.floor(py), shadeOf(pal.comb, h, 0, 0)); }
+    if (style === 'dog') { const [px, py] = at(1.45, -0.2); put(Math.floor(px), Math.floor(py), pal.nose); }
     // Eye, or crosses when dead.
-    const ex = Math.floor(hx + fwx * r * 0.5 + ux * r * 0.05), ey = Math.floor(hy - fwy * r * 0.5 - uy * r * 0.05);
+    const [eyeF, eyeU] = EYE_AT[style] || [0.5, 0.05];
+    const [exf, eyf] = at(eyeF, eyeU);
+    const ex = Math.floor(exf), ey = Math.floor(eyf);
     if (c.alive) put(ex, ey, pal.eye);
     else { put(ex - 1, ey - 1, OUTLINE); put(ex + 1, ey - 1, OUTLINE); put(ex, ey, OUTLINE); put(ex - 1, ey + 1, OUTLINE); put(ex + 1, ey + 1, OUTLINE); }
   };

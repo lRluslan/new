@@ -7,7 +7,9 @@ export const EMPTY = 0, STONE = 1, DIRT = 2, SAND = 3, SNOW = 4, ASH = 5,
   SMOKE = 12, FIRE = 13, WOOD = 14, PLANT = 15, ICE = 16,
   GLASS = 17, OBSIDIAN = 18, METAL = 19, SALT = 20, BRINE = 21, MUD = 22, BRICK = 23, COAL = 24,
   THERMITE = 25, MOLTEN = 26, RUST = 27, MERCURY = 28, HONEY = 29, FUSE = 30, CLONER = 31, DRAIN = 32,
-  BLOOD = 33, BODY = 34;
+  BLOOD = 33, BODY = 34, GRAVEL = 35, CEMENT = 36, CONCRETE = 37, NAPALM = 38, NITRO = 39, C4 = 40,
+  NITROGEN = 41, SLIME = 42, WAX = 43, MOLTEN_WAX = 44, GOLD = 45, MOLTEN_GOLD = 46, FUNGUS = 47,
+  FIREWORK = 48, SPARKLE = 49, CLOUD = 50, BATTERY = 51, LAMP = 52;
 
 export const SOLID = 1, POWDER = 2, LIQUID = 3, GAS = 4;
 
@@ -22,6 +24,8 @@ export const DISC = {
   DISSOLVE: 20, DEICE: 21, SALT_CRYSTALS: 22, MUD: 23, BRICK: 24, CHARCOAL: 25, BRINE_SINKS: 26,
   THERMITE: 27, MELT_METAL: 28, CASTING: 29, RUST: 30, MERCURY_FLOAT: 31, FUSE: 32, LIGHTNING: 33,
   DROWN: 34, ON_FIRE: 35, CRUSH: 36, INFECTION: 37, GASP: 38, SALT_FLOAT: 39,
+  CONCRETE: 40, NAPALM: 41, NITRO: 42, C4: 43, CRYO: 44, CANDLE: 45, GOLD: 46, ROT: 47,
+  FIREWORK: 48, RAIN_CLOUD: 49, ELECTRIC: 50, LAMP: 51, SHOCK: 52,
 };
 
 export const DISCOVERIES = [
@@ -103,6 +107,32 @@ export const DISCOVERIES = [
     text: 'Gills only work in water. A fish on land flops about and soon suffocates.' },
   { id: DISC.SALT_FLOAT, title: 'Salt water floats you', recipe: 'Person + salt water', hint: 'Throw someone into salt water.',
     text: 'Salt water is denser than a person, so you float without swimming, like in the Dead Sea.' },
+  { id: DISC.CONCRETE, title: 'Concrete', recipe: 'Cement + time', hint: 'Pour some cement and wait.',
+    text: 'Cement reacts with the water mixed into it and slowly sets into hard concrete, even under water.' },
+  { id: DISC.NAPALM, title: 'Sticky fire', recipe: 'Napalm + fire', hint: 'Set napalm alight, then try to put it out.',
+    text: 'Napalm is jellied fuel. It clings, burns for a long time at about 1300 °C, and floats on water, so water cannot put it out.' },
+  { id: DISC.NITRO, title: 'Shock sensitive', recipe: 'Nitroglycerin + a bump', hint: 'Drop some nitroglycerin from high up.',
+    text: 'Nitroglycerin is so unstable that a hard knock sets it off, not just heat.' },
+  { id: DISC.C4, title: 'Plastic explosive', recipe: 'C4 + heat', hint: 'C4 ignores knocks. What does it need?',
+    text: 'C4 is very stable: you can drop it or even burn the outside slowly. Real heat or a spark sets off a huge blast.' },
+  { id: DISC.CRYO, title: 'Cryogenics', recipe: 'Liquid nitrogen', hint: 'Pour liquid nitrogen on something.',
+    text: 'Nitrogen boils at -196 °C. As it boils away it pulls heat out of everything it touches and freezes water solid.' },
+  { id: DISC.CANDLE, title: 'Candle', recipe: 'Wax + flame', hint: 'Heat some wax, then light it.',
+    text: 'Wax melts at about 60 °C. A wax flame burns slowly and steadily, melting more wax as it goes.' },
+  { id: DISC.GOLD, title: 'Molten gold', recipe: 'Gold + 1064 °C', hint: 'Gold does not rust or dissolve. Can you melt it?',
+    text: 'Gold melts at 1064 °C. It weighs 19,300 kg/m³, heavy enough to sink even in mercury, though it is hot enough to boil mercury away.' },
+  { id: DISC.ROT, title: 'Rot', recipe: 'Fungus + damp wood', hint: 'Grow fungus near water and wood.',
+    text: 'Fungus feeds on dead wood and spreads fastest where it is damp, slowly turning logs into more fungus.' },
+  { id: DISC.FIREWORK, title: 'Fireworks', recipe: 'Firework + fire', hint: 'Light a firework.',
+    text: 'A firework rocket burns its fuel to climb, then its charge bursts into burning metal salts: strontium red, copper blue, barium green.' },
+  { id: DISC.RAIN_CLOUD, title: 'Rain cloud', recipe: 'Cloud', hint: 'Make a cloud and watch it.',
+    text: 'Clouds are tiny drops of water floating in the air. When they join into bigger drops, they fall as rain, or snow in the cold.' },
+  { id: DISC.ELECTRIC, title: 'Electricity', recipe: 'Battery + metal', hint: 'Put a battery next to a metal wire.',
+    text: 'A battery pushes electric current through metal. Gold and iron both conduct; the pulse runs along the wire.' },
+  { id: DISC.LAMP, title: 'Let there be light', recipe: 'Battery + wire + lamp', hint: 'Power a lamp with a wire.',
+    text: 'Current through a lamp heats its filament until it glows. It is brightest at night.' },
+  { id: DISC.SHOCK, title: 'Electrocution', recipe: 'Creature + live wire', hint: 'What happens if someone touches a live wire?',
+    text: 'Current through a body makes the muscles jump and hurts. Do not try this at home.' },
 ];
 
 // Look up a discovery by its id (ids stay stable even if one is retired).
@@ -281,6 +311,86 @@ def(BLOOD, { name: 'Blood', cat: 'liquid', state: LIQUID, density: 1060, k: 0.14
 def(BODY, { name: 'Creature', state: SOLID, density: 99999, k: 0, c: 1, acidProof: true,
   c2: ['#000000'] });
 
+def(GRAVEL, { name: 'Gravel', cat: 'powder', state: POWDER, density: 1800, k: 0.1, c: 0.8, slide: 0.3, hard: 0.6,
+  desc: 'Small stones. Heavier than sand and piles up in steep heaps.',
+  c2: ['#8f8a80', '#a29c90', '#77736b', '#b3ad9f'] });
+
+def(CEMENT, { name: 'Cement', cat: 'liquid', state: LIQUID, density: 2300, k: 0.1, c: 0.9, flow: 2, visc: 0.3, hard: 0.5,
+  life: [500, 800],
+  desc: 'Wet concrete. Flows slowly, then sets hard after about ten seconds, even under water.',
+  c2: ['#b8b2a6', '#aaa498', '#c4beb2', '#9d978b'] });
+
+def(CONCRETE, { name: 'Concrete', cat: 'solid', state: SOLID, density: 2400, k: 0.1, c: 0.9, hard: 0.25,
+  desc: 'Set cement. Hard, heavy, and slow for acid to eat.',
+  c2: ['#a7a296', '#b5b0a4', '#9a958a', '#bdb8ac'] });
+
+def(NAPALM, { name: 'Napalm', cat: 'liquid', state: LIQUID, density: 900, k: 0.04, c: 0.6, flow: 1, visc: 0.15, hard: 0.6,
+  ignite: 150, burn: [420, 1300, 0],
+  desc: 'Jellied fuel. Clings, burns very hot for a long time, and floats on water, so water cannot put it out.',
+  c2: ['#c26a1e', '#b35d18', '#d27a2a', '#a14f12'] });
+
+def(NITRO, { name: 'Nitroglycerin', cat: 'explosive', state: LIQUID, density: 1600, k: 0.06, c: 0.6, flow: 3, visc: 0.9, hard: 0.4,
+  ignite: 170,
+  desc: 'A liquid explosive so unstable that a hard bump sets it off. Heat does too.',
+  c2: ['#e8e2a0', '#ddd690', '#f2edb4', '#d0c880'] });
+
+def(C4, { name: 'C4', cat: 'explosive', state: SOLID, density: 1600, k: 0.05, c: 0.8, ignite: 320, hard: 0.5,
+  desc: 'Plastic explosive. Safe to drop, but heat or a spark sets off a huge blast.',
+  c2: ['#d9d2b6', '#cfc8aa', '#e3dcc2', '#c4bd9e'] });
+
+def(NITROGEN, { name: 'Liquid nitrogen', cat: 'liquid', state: LIQUID, density: 808, k: 0.14, c: 1.0, flow: 5, visc: 1, hard: 0,
+  temp: -196, hot: [-196, EMPTY, DISC.CRYO], latent: [70, 0],
+  desc: 'At -196 °C it boils away fast, freezing water and anything it touches.',
+  c2: ['#d8f2ff', '#c4e8fb', '#e6f8ff', '#b4dcf2'] });
+
+def(SLIME, { name: 'Slime', cat: 'liquid', state: LIQUID, density: 1100, k: 0.06, c: 1.2, flow: 1, visc: 0.06, hard: 0.2,
+  desc: 'Very thick green goo. Oozes, and anything that falls in gets stuck.',
+  c2: ['#6fd04a', '#5fc23c', '#82dc5c', '#4fae30'] });
+
+def(WAX, { name: 'Wax', cat: 'solid', state: SOLID, density: 900, k: 0.05, c: 1.2, hard: 0.6,
+  hot: [62, MOLTEN_WAX, DISC.CANDLE], latent: [40, 0], ignite: 240, burn: [700, 620, 0],
+  desc: 'Candle wax. Melts at 62 °C and burns slowly with a small flame.',
+  c2: ['#f4ead2', '#ede0c2', '#f8f1df', '#e4d6b4'] });
+
+def(MOLTEN_WAX, { name: 'Molten wax', cat: 'liquid', state: LIQUID, density: 880, k: 0.05, c: 1.2, flow: 2, visc: 0.5, hard: 0.6,
+  temp: 70, cold: [55, WAX, -1], latent: [0, 40], ignite: 240, burn: [700, 620, 0],
+  desc: 'Melted wax. Sets again as it cools.',
+  c2: ['#f7e7b8', '#f2dea6', '#fbefca', '#ebd292'] });
+
+def(GOLD, { name: 'Gold', cat: 'solid', state: SOLID, density: 19300, k: 0.3, c: 0.13, acidProof: true,
+  hot: [1064, MOLTEN_GOLD, DISC.GOLD], latent: [60, 0],
+  desc: 'Never rusts and acid cannot touch it. Conducts electricity. Melts at 1064 °C.',
+  c2: ['#f2c440', '#e3b02a', '#ffd966', '#c9961c'] });
+
+def(MOLTEN_GOLD, { name: 'Molten gold', cat: 'liquid', state: LIQUID, density: 17300, k: 0.3, c: 0.13, flow: 3, visc: 0.6, temp: 1250,
+  cold: [1064, GOLD, DISC.CASTING], latent: [0, 400], hard: 0, glow: true, acidProof: true,
+  desc: 'Liquid gold. So heavy it sinks through mercury.',
+  c2: ['#ffe27a', '#ffd04a', '#fff0a8', '#ffbf2a'] });
+
+def(FUNGUS, { name: 'Fungus', cat: 'life', state: SOLID, density: 600, k: 0.05, c: 1.0, ignite: 220, burn: [40, 600, 0.4], hard: 0.9, life: [5, 8],
+  desc: 'Creeps over damp ground and rots wood into more fungus. Grows fastest near water.',
+  c2: ['#c9b48a', '#b39c70', '#d8c69e', '#8f7a52'] });
+
+def(FIREWORK, { name: 'Firework', cat: 'explosive', state: POWDER, density: 1200, k: 0.06, c: 0.6, slide: 0.4, ignite: 200, hard: 0.8,
+  desc: 'Light it and it shoots up into the sky and bursts into colours.',
+  c2: ['#c8463a', '#3a7ac8', '#e8b53a', '#4aa85a'] });
+
+// The burning stars of a firework burst.
+def(SPARKLE, { name: 'Firework spark', state: GAS, density: 0.5, k: 0.05, c: 0.05, temp: 500, life: [30, 70], hard: 0, glow: true,
+  c2: ['#ff5a4a', '#5aa8ff', '#ffd84a', '#6aff7a', '#ff7ad8', '#ffffff'] });
+
+def(CLOUD, { name: 'Cloud', cat: 'gas', state: GAS, density: 0.9, k: 0.02, c: 0.4, hard: 0, life: [1500, 2500],
+  desc: 'Drifts across the sky and rains. In the cold it snows instead.',
+  c2: ['#f4f1ea', '#e6e2da', '#fbfaf6', '#d6d2ca'] });
+
+def(BATTERY, { name: 'Battery', cat: 'machine', state: SOLID, density: 99999, k: 0.0, c: 9, acidProof: true,
+  desc: 'Sends pulses of electricity into any metal or gold wire touching it.',
+  c2: ['#2f3a2a', '#3a4733', '#e0b43a', '#c84a3a'] });
+
+def(LAMP, { name: 'Lamp', cat: 'machine', state: SOLID, density: 2500, k: 0.05, c: 0.8, hard: 0.2,
+  desc: 'Lights up while electricity flows into it. Wire it to a battery.',
+  c2: ['#6a6250', '#5e5646', '#776e5a', '#fff2b0'] });
+
 export const COUNT = DEFS.length;
 export const ELEMENTS = DEFS;
 
@@ -338,12 +448,13 @@ for (let t = 0; t < COUNT; t++) {
 
 // Order of the buttons in the element palette.
 export const PALETTE = [
-  { cat: 'Powders', items: [SAND, DIRT, SNOW, GUNPOWDER, ASH, OBSIDIAN, SALT, MUD, THERMITE, RUST] },
-  { cat: 'Liquids', items: [WATER, OIL, LAVA, ACID, BRINE, MERCURY, HONEY, MOLTEN] },
-  { cat: 'Gases', items: [FIRE, SMOKE] },
-  { cat: 'Solids', items: [STONE, WOOD, ICE, METAL, GLASS, BRICK, COAL, FUSE] },
-  { cat: 'Life', items: [PLANT, SEED] },
-  { cat: 'Machines', items: [CLONER, DRAIN] },
+  { cat: 'Powders', items: [SAND, DIRT, SNOW, GRAVEL, ASH, OBSIDIAN, SALT, MUD, THERMITE, RUST] },
+  { cat: 'Liquids', items: [WATER, OIL, LAVA, ACID, BRINE, MERCURY, HONEY, MOLTEN, CEMENT, NAPALM, NITROGEN, SLIME] },
+  { cat: 'Gases', items: [FIRE, SMOKE, CLOUD] },
+  { cat: 'Solids', items: [STONE, WOOD, ICE, METAL, GLASS, BRICK, COAL, FUSE, CONCRETE, WAX, GOLD] },
+  { cat: 'Explosives', items: [GUNPOWDER, NITRO, C4, FIREWORK] },
+  { cat: 'Life', items: [PLANT, SEED, FUNGUS] },
+  { cat: 'Machines', items: [CLONER, DRAIN, BATTERY, LAMP] },
 ];
 
 export function hexToRgb(hex) {
