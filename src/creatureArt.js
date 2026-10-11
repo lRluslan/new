@@ -15,6 +15,7 @@ const scale = (c, f) => pack(Math.min(255, R(c) * f) | 0, Math.min(255, G(c) * f
 
 const OUTLINE = packHex('#1b130e');
 const BLOOD = [packHex('#8a1915'), packHex('#a8221b'), packHex('#6e120f')];
+const GASH = packHex('#4a0806'), BRUISE = packHex('#5e3a6a'), BONE = packHex('#efe6d0'), FLESH = packHex('#b33a2c');
 const CHAR = packHex('#2a1d17');
 const WHITE = packHex('#fff6e6'), HURT = packHex('#ff4a3a');
 const FLAME = [packHex('#ffb636'), packHex('#ffe07a'), packHex('#ff8a1f')];
@@ -67,7 +68,15 @@ export function drawCreature(c, o) {
   // Final colour of one pixel of a part.
   const shadeOf = (base, k, px, py) => {
     let col = base;
-    if (gore && k >= 0 && c.wound[k] > 4 && hash(px * 7 + c.id, py * 13) < Math.min(0.6, c.wound[k] / 80)) col = BLOOD[(hash(px, py + 3) * 3) | 0];
+    if (gore && k >= 0) {
+      // Bruises darken the skin; open cuts show as dark gashes ringed with
+      // blood, and blood soaks into clothes around them.
+      if (c.bruise[k] > 10) col = blend(col, BRUISE, Math.min(0.25, c.bruise[k] / 200));
+      const h1 = hash(px * 7 + c.id, py * 13);
+      const cut = c.cut[k];
+      if (cut > 3 && h1 < Math.min(0.7, cut / 70)) col = h1 < Math.min(0.18, cut / 260) ? GASH : BLOOD[(hash(px, py + 3) * 3) | 0];
+      else if (cut > 1 && h1 < Math.min(0.3, cut / 120)) col = BLOOD[2];
+    }
     if (char > 0) col = blend(col, CHAR, char * 0.88);
     if (!c.alive) col = blend(col, scale(col, 0.75), 0.5);
     if (burning && hash(px + tick * 3, py - tick * 5) < 0.28) col = blend(col, FLAME[(hash(px, py + tick) * 3) | 0], 0.75);
@@ -200,6 +209,17 @@ export function drawCreature(c, o) {
 
   for (const p of parts) drawPart(p, true);
   for (const p of parts) drawPart(p, false);
+
+  // Where a limb came off: raw flesh with the end of the bone showing.
+  if (gore) for (const s of c.sticks) {
+    if (!s.broken || !s.thick) continue;
+    for (const k of [s.a, s.b]) {
+      const sx = X(c.px[k]), sy = Y(c.py[k]), r = Math.max(1, s.thick * S * 0.55);
+      disc(sx, sy, r, FLESH, -1, false);
+      put(Math.floor(sx), Math.floor(sy), BONE);
+      if (r > 1.5) put(Math.floor(sx) + 1, Math.floor(sy), BONE);
+    }
+  }
 
   // Fish: a pale stripe and an eye.
   if (sp.head === 'fish') {

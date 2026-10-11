@@ -12,7 +12,7 @@ import {
   EMPTY, STONE, DIRT, SAND, GUNPOWDER, SEED, WATER, OIL, ACID, LAVA, SMOKE,
   FIRE, WOOD, PLANT, OBSIDIAN, ASH, ICE, SNOW, SALT, BRINE, MUD, COAL,
   METAL, RUST, MERCURY, FUSE, THERMITE, CLONER, DRAIN, GLASS, BODY, BLOOD, GOLD, CEMENT, CONCRETE, NAPALM, NITRO, C4,
-  WAX, MOLTEN_WAX, FUNGUS, FIREWORK, SPARKLE, CLOUD, BATTERY, LAMP, COUNT, SOLID, POWDER, LIQUID, GAS, AMBIENT, FIRE_TEMP, DISC,
+  WAX, MOLTEN_WAX, FUNGUS, FIREWORK, SPARKLE, CLOUD, BATTERY, LAMP, DRIED_BLOOD, COUNT, SOLID, POWDER, LIQUID, GAS, AMBIENT, FIRE_TEMP, DISC,
   STATE, DENS, K, CAP, TEMP0, HOT_AT, HOT_TO, HOT_DISC, COLD_AT, COLD_TO, COLD_DISC, LATENT_HOT, LATENT_COLD,
   IGNITE, BURN_TIME, BURN_HEAT, ASH_CHANCE, BURN_TO, OWN_OXYGEN, FLOW, VISC, RISE, LIFE_MIN, LIFE_SPAN, SLIDE,
   HARD, GLOWS,
@@ -393,6 +393,11 @@ export class World {
         if (t === ACID && this.corrode(i, x, y)) return;
         // Cement sets into concrete after a while, wherever it is.
         if (t === CEMENT && --this.life[i] <= 0) { this.morph(i, CONCRETE); this.discover(DISC.CONCRETE); return; }
+        // Blood dries into a crust after half a minute or so; water keeps it wet.
+        if (t === BLOOD && --this.life[i] <= 0) {
+          if (this.hasNeighbor(i, x, y, WATER)) { this.morph(i, WATER); return; }
+          this.morph(i, DRIED_BLOOD); return;
+        }
         this.moveLiquid(i, t, x, y);
         break;
       case GAS:
@@ -560,7 +565,7 @@ export class World {
       this.discover(DISC.MUD);
       return i;
     }
-    if (s === i && t !== ACID && t !== CEMENT && this.supported(i, t, x, y)) {
+    if (s === i && t !== ACID && t !== CEMENT && t !== BLOOD && this.supported(i, t, x, y)) {
       this.flags[i] |= RESTING;
       this.restRegion[this.regionOf[i]] = 1;
     }

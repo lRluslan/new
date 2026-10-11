@@ -12,7 +12,7 @@ const {
   EMPTY, STONE, DIRT, SAND, SNOW, WATER, OIL, ACID, LAVA, SMOKE, FIRE, WOOD, PLANT,
   ICE, GLASS, SEED, SALT, BRINE, MUD, BRICK, COAL, MOLTEN, MERCURY, HONEY, FUSE, CLONER, DRAIN, STATE, GAS, GLOWS,
   METAL, GOLD, MOLTEN_GOLD, LAMP, BATTERY, SPARKLE, CLOUD, NITROGEN, CEMENT, CONCRETE, SLIME, FUNGUS, NAPALM,
-  FIREWORK, WAX, MOLTEN_WAX, GRAVEL, NITRO, C4, LIQUID,
+  FIREWORK, WAX, MOLTEN_WAX, GRAVEL, NITRO, C4, LIQUID, BLOOD, DRIED_BLOOD,
 } = El;
 const SPARK = 32, ZAPPED = 64; // wire flags (see world.js)
 
@@ -52,6 +52,8 @@ const SPORE = packHex('#f0e2bc'), SPORE_GLOW = packHex('#9ff0c8');
 const NIGHT = packHex('#0b1224'), NIGHT_SKY = ['#060a18', '#0a1124', '#101a33', '#182544', '#22304f', '#2c3a58'].map(packHex);
 const STAR = packHex('#f4f2ff'), MOON = packHex('#f3efd8'), MOON_DARK = packHex('#cfc8ac');
 const FIREFLY = packHex('#d8ff7a');
+// Blood: glossy and bright on top, dark where it pools deep; fresh blood is redder.
+const BLOOD_D = ['#b82a1e', '#9a1d16', '#851812', '#70140f', '#5c100c'].map(packHex), BLOOD_HI = packHex('#d84a3a');
 
 // Thermal camera colours from -50 °C to 2500 °C.
 const THERMAL = (() => {
@@ -581,6 +583,12 @@ export class Renderer2D {
           case WAX: case MOLTEN_WAX: if (run === 0) c = scale(c, 1.05); break;
           case MOLTEN_GOLD: c = blend(PAL[MOLTEN_GOLD][((sh >> 4) + tick + (x >> 1)) & 3], GOLD_GLINT, 0.15); break;
           case GRAVEL: if ((sh & 3) === 0) c = scale(c, 0.8); break;
+          case BLOOD:
+            c = BLOOD_D[Math.min(4, (run >> 1) + (sh & 1))];
+            if (run === 0 && y < H - 1 && type[i + W] === EMPTY && (sh & 3) === 0) c = BLOOD_HI;
+            if (life[i] < 600) c = blend(c, PAL[DRIED_BLOOD][0], (600 - life[i]) / 900);
+            break;
+          case DRIED_BLOOD: c = PAL[DRIED_BLOOD][(sh >> 3) & 3]; break;
           case NITRO: if (run === 0) c = scale(c, 1.1); break;
           case C4: if (((x + y) & 3) === 0) c = scale(c, 0.9); break;
           case SALT: if (exposed && run === 0) c = SALT_TOP; break;

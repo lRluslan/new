@@ -9,7 +9,7 @@ export const EMPTY = 0, STONE = 1, DIRT = 2, SAND = 3, SNOW = 4, ASH = 5,
   THERMITE = 25, MOLTEN = 26, RUST = 27, MERCURY = 28, HONEY = 29, FUSE = 30, CLONER = 31, DRAIN = 32,
   BLOOD = 33, BODY = 34, GRAVEL = 35, CEMENT = 36, CONCRETE = 37, NAPALM = 38, NITRO = 39, C4 = 40,
   NITROGEN = 41, SLIME = 42, WAX = 43, MOLTEN_WAX = 44, GOLD = 45, MOLTEN_GOLD = 46, FUNGUS = 47,
-  FIREWORK = 48, SPARKLE = 49, CLOUD = 50, BATTERY = 51, LAMP = 52;
+  FIREWORK = 48, SPARKLE = 49, CLOUD = 50, BATTERY = 51, LAMP = 52, DRIED_BLOOD = 53;
 
 export const SOLID = 1, POWDER = 2, LIQUID = 3, GAS = 4;
 
@@ -300,8 +300,8 @@ def(DRAIN, { name: 'Drain', cat: 'machine', state: SOLID, density: 99999, k: 0.0
   c2: ['#120f1a', '#1b1626', '#0b0910', '#3b2f5c'] });
 
 // Blood: thin salty water with cells in it. Boils away like water.
-def(BLOOD, { name: 'Blood', cat: 'liquid', state: LIQUID, density: 1060, k: 0.14, c: 1.5, flow: 4, visc: 0.7, hard: 0.2,
-  hot: [100, EMPTY, DISC.BOIL], latent: [200, 0],
+def(BLOOD, { name: 'Blood', cat: 'liquid', state: LIQUID, density: 1060, k: 0.14, c: 1.5, flow: 3, visc: 0.55, hard: 0.2,
+  hot: [100, EMPTY, DISC.BOIL], latent: [200, 0], life: [2400, 4200],
   desc: 'Comes out of hurt creatures. Flows like thin water.',
   c2: ['#9e1f1a', '#8a1915', '#b22a20', '#741410'] });
 
@@ -390,6 +390,11 @@ def(BATTERY, { name: 'Battery', cat: 'machine', state: SOLID, density: 99999, k:
 def(LAMP, { name: 'Lamp', cat: 'machine', state: SOLID, density: 2500, k: 0.05, c: 0.8, hard: 0.2,
   desc: 'Lights up while electricity flows into it. Wire it to a battery.',
   c2: ['#6a6250', '#5e5646', '#776e5a', '#fff2b0'] });
+
+// Blood that has lain still long enough dries into a dark crust.
+def(DRIED_BLOOD, { name: 'Dried blood', state: POWDER, density: 1300, k: 0.08, c: 1.0, slide: 0.03, hard: 0.9,
+  desc: 'Old blood, dried into a dark crust.',
+  c2: ['#4a1210', '#5a1712', '#3e0f0d', '#64201a'] });
 
 export const COUNT = DEFS.length;
 export const ELEMENTS = DEFS;

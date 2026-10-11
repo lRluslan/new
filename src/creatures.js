@@ -23,7 +23,7 @@ const MAX_V = 2.5;        // fastest a point can move, cells per step
 const ITERATIONS = 3;     // stick and collision passes per step
 const MAX_CREATURES = 40;
 const RESTING = 16;       // world flag bit for a resting liquid (see world.js)
-const FALL_HURTS = 0.95;  // impact speed (cells per step) above which a landing hurts
+const FALL_HURTS = 1.0;   // impact speed (cells per step) above which a landing hurts
 
 // Body part groups, so a limb can come off as one piece. The left limbs are
 // on the far side of the body and drawn behind it.
@@ -246,6 +246,8 @@ for (const sp of Object.values(SPECIES)) {
   });
   sp.dotList = (sp.dots || []).map(([p, r, color]) => ({ k: idx[p], r, color }));
   sp.height = Math.max(...sp.rest.map(r => r[1])) + sp.headR;
+  sp.legL = sp.points.some(p => p[5] === LEG_L) ? 1 : 0;
+  sp.legR = sp.points.some(p => p[5] === LEG_R) ? 1 : 0;
   sp.length = Math.max(...sp.rest.map(r => r[0])) - Math.min(...sp.rest.map(r => r[0]));
 }
 
@@ -261,7 +263,11 @@ class Creature {
     this.r = new Float32Array(sp.points.map(p => p[3]));
     this.im = new Float32Array(sp.points.map(p => 1 / p[4]));
     this.limb = new Uint8Array(sp.points.map(p => p[5]));
-    this.wound = new Float32Array(n);
+    this.wound = new Float32Array(n);   // all harm a part has taken (for blood on clothes)
+    this.cut = new Float32Array(n);     // open wounds
+    this.bruise = new Float32Array(n);  // blunt harm
+    this.bleed = new Float32Array(n);   // how fast each part is bleeding (clots over time)
+    this.limbHp = new Float32Array(7).fill(sp.hp * 0.6); // each body part can be broken on its own
     this.detached = new Uint8Array(n);
     this.sticks = sp.stickList.map(s => ({ ...s, broken: false, bleed: 0 }));
     this.facing = facing;        // 1: facing right, -1: facing left
@@ -272,7 +278,7 @@ class Creature {
     }
     this.colors = colors;
     this.hp = sp.hp; this.alive = true;
-    this.oxygen = 400; this.stamina = 600;
+    this.oxygen = 600; this.stamina = 600;
     this.fire = 0; this.char = 0;
     this.stun = 0; this.strength = 1;
     this.speed = 0; this.phase = 0;
@@ -284,7 +290,7 @@ class Creature {
     this.swimming = false; this.grounded = false;
     this.impact = 0; this.impactK = 0;
     this.swimDY = 0; this.flapping = false;
-    this.flyY = 0; this.hopT = 30;
+    this.flyY = 0; this.hopT = 30; this.limp = 1; this.fireCool = 0;
   }
 }
 
@@ -373,7 +379,7 @@ export class Creatures {
       if (!c) continue;
       const k = o & 255, power = h[j + 1] / 1600;
       c.oy[k] += power * 0.02;   // pushed down
-      const dmg = (power - 2) * 0.45;
+      const dmg = (power - 2) * 0.3;
       if (dmg > 0) this.hurt(c, dmg, k, 'crush', dmg * 0.4);
     }
     h.length = 0;
@@ -389,10 +395,10 @@ export class Creatures {
         const f = 1 - d / R, s = d > 0.01 ? 2.1 * f / d : 0;
         c.ox[k] -= dx * s; c.oy[k] -= dy * s + 0.7 * f;
         if (f > best) { best = f; bk = k; }
-        // Blown apart, if blood and damage effects are on.
-        if (this.gore && f > 0.55 && c.limb[k] !== CORE && Math.random() < 0.35) this.detach(c, c.limb[k]);
+        // Each part takes the blast it was close to: shrapnel cuts, the shock bruises.
+        if (f > 0.2) this.injure(c, k, 45 * f * f, 'blast', 50 * f);
       }
-      if (best > 0) { this.hurt(c, 95 * best, bk, 'blast', 60); c.fire = Math.max(c.fire, c.sp.burns && best > 0.4 ? 200 : 0); }
+      if (best > 0) { this.hurt(c, 55 * best * best, bk, 'blast', 60 * best); c.fire = Math.max(c.fire, c.sp.burns && best > 0.5 ? 200 : 0); }
     }
   }
 
@@ -402,7 +408,7 @@ export class Creatures {
     for (const c of this.list) {
       const k = c.sp.headK;
       if (Math.abs(c.px[k] - x - 0.5) > 2.5 || c.py[k] < hitY - 3) continue;
-      this.hurt(c, 85, k, 'lightning', 80);
+      this.hurt(c, 40, k, 'lightning', 60);
       if (c.sp.burns) c.fire = 500;
       for (let p = 0; p < c.n; p++) { c.ox[p] += (Math.random() - 0.5) * 0.6; c.oy[p] -= Math.random() * 0.4; }
     }
@@ -456,9 +462,10 @@ export class Creatures {
     }
     if (c.impact > FALL_HURTS && c.age > 5) {
       const k = c.impactK;
-      const dmg = (c.impact - FALL_HURTS) * 105 * (k === sp.headK ? 1.4 : 1);
+      const dmg = (c.impact - FALL_HURTS) * 45 * (k === sp.headK ? 1.3 : 1);
       this.hurt(c, dmg, k, 'fall', dmg);
     }
+    this.bloodStep(c);
     this.environment(c);
   }
 
@@ -578,7 +585,15 @@ export class Creatures {
 
   muscles(c) {
     const sp = c.sp;
-    const able = c.alive && !c.grab && c.stun <= 0 && !c.detached[sp.rootK];
+    // Broken legs: one makes it limp, two and it cannot stand (a bird can still fly).
+    // A leg that is gone altogether, not just broken, cannot be stood on at all.
+    const legGone = L => c.detached.some((d, k) => d && c.limb[k] === L);
+    const legsOut = (sp.legL && c.limbHp[LEG_L] <= 0 ? (legGone(LEG_L) ? 2 : 1) : 0) + (sp.legR && c.limbHp[LEG_R] <= 0 ? (legGone(LEG_R) ? 2 : 1) : 0);
+    const legs = sp.legL + sp.legR;
+    c.limp = legsOut > 0 ? 0.35 : 1;
+    if (c.limbHp[HEAD] <= 0 && c.alive) c.stun = Math.max(c.stun, 10); // concussed
+    const downed = legs > 0 && legsOut >= legs && !(sp.flies && c.mood === 'fly');
+    const able = c.alive && !c.grab && c.stun <= 0 && !c.detached[sp.rootK] && !downed;
     c.strength = able ? Math.min(1, c.strength + 0.025) : 0;
     c.flapping = false;
     c.swimming = false;
@@ -628,7 +643,7 @@ export class Creatures {
       c.hopT = c.mood === 'flee' ? 22 + Math.random() * 15 : 40 + Math.random() * 40;
       for (let k = 0; k < c.n; k++) { c.oy[k] -= 0.42; c.ox[k] -= fx * 0.22; }
     }
-    const speed = c.grounded && !sp.hops ? c.speed * (inLiquid ? 0.55 : 1) : 0;
+    const speed = c.grounded && !sp.hops ? c.speed * (inLiquid ? 0.55 : 1) * c.limp : 0;
     if (speed > 0.005) c.phase += speed * 0.9;
     const stride = Math.min(sp.flaps ? 0.7 : 1.7, speed * 22), lift = Math.min(1, speed * 12);
     const bob = speed > 0.005 ? 0 : 0.08 * Math.sin(c.age * 0.05);
@@ -650,6 +665,8 @@ export class Creatures {
       if (k === k0) U += bob;
       const tx = rx + fx * F, ty = base + U;
       let m = P[6] * c.strength * support;
+      // A broken arm or leg hangs limp.
+      if (P[5] !== CORE && P[5] !== HEAD && c.limbHp[P[5]] <= 0) m = 0;
       if (c.swimming) m *= 0.5;
       let vx = c.px[k] - c.ox[k], vy = c.py[k] - c.oy[k];
       const gx = (tx - c.px[k]) * 0.35 + fx * speed + rvx, gy = (ty - c.py[k]) * 0.35 + rvy;
@@ -769,7 +786,7 @@ export class Creatures {
           if (Math.hypot(prey.px[k] - hx, prey.py[k] - hy) < 2.2) {
             c.biteT = 40;
             if (!prey.infected) prey.infected = 220;
-            this.hurt(prey, 9, k, 'bite', 9);
+            this.hurt(prey, 6, k, 'bite', 9);
             break;
           }
         }
@@ -873,23 +890,25 @@ export class Creatures {
       else if (t === LAVA || t === MOLTEN) inLava++;
       else if (t === ACID) {
         inAcid++;
-        c.wound[k] += 0.05 * sp.acid;
+        c.wound[k] += 0.03 * sp.acid;
         if (Math.random() < 0.01) w.set(i, SMOKE, T + 10);
       } else if (DOUSES[t]) doused = true;
       if (HARD_CELL[t]) embedded++;
     }
 
     // Fire.
-    if (sp.burns && !doused && c.fire <= 0 && (inLava || ((inFire || maxT > 280) && Math.random() < 0.12))) {
+    // (Just after the flames go out, the warm ground under the body does not relight it.)
+    if (c.fireCool > 0) c.fireCool--;
+    if (sp.burns && !doused && c.fire <= 0 && (inLava || (c.fireCool <= 0 && (inFire || maxT > 280) && Math.random() < 0.12))) {
       c.fire = 450 + Math.random() * 300;
       if (c.alive) w.discover(DISC.ON_FIRE);
     }
     if (c.fire > 0) {
-      if (doused) c.fire = 0;
+      if (doused) { c.fire = 0; c.fireCool = 240; }
       else {
-        c.fire--;
+        if (--c.fire <= 0) c.fireCool = 240;
         c.char = Math.min(1, c.char + 0.0016 * sp.burns);
-        if (c.alive) this.hurt(c, 0.16 * sp.burns, -1, 'fire');
+        if (c.alive) this.hurt(c, 0.06 * sp.burns, -1, 'fire');
         // Flames rise from the body and heat what it touches.
         const k = (Math.random() * c.n) | 0;
         const up = this.cellIndex(c.px[k], c.py[k] + 1);
@@ -901,14 +920,14 @@ export class Creatures {
     }
     if (inLava) {
       c.char = Math.min(1, c.char + 0.006 * inLava);
-      if (c.alive) this.hurt(c, inLava * (c.kind === 'robot' ? 0.45 : 1.1), -1, 'lava');
+      if (c.alive) this.hurt(c, inLava * (c.kind === 'robot' ? 0.03 : 0.06), -1, 'lava');
     }
     if (!c.alive) return;
-    if (maxT > sp.heatMax) this.hurt(c, Math.min(1.2, (maxT - sp.heatMax) * 0.004), -1, 'heat');
+    if (maxT > sp.heatMax) this.hurt(c, Math.min(0.05, (maxT - sp.heatMax) * 0.0004), -1, 'heat');
     // Frostbite, and a shock from a live wire.
-    if (minT < -20 && c.kind !== 'robot') this.hurt(c, Math.min(0.5, (-20 - minT) * 0.002), -1, 'cold');
+    if (minT < -20 && c.kind !== 'robot') this.hurt(c, Math.min(0.15, (-20 - minT) * 0.0008), -1, 'cold');
     if ((c.age + c.id) % 2 === 0) this.shock(c);
-    if (inAcid) this.hurt(c, inAcid * 0.05 * sp.acid, -1, 'acid');
+    if (inAcid) this.hurt(c, inAcid * 0.03 * sp.acid, -1, 'acid');
 
     // Breathing.
     const h = sp.headK;
@@ -918,11 +937,11 @@ export class Creatures {
       const ok = sp.breathes === 'water' ? ht === WATER || ht === BRINE
         : sp.breathes === 'both' ? !buried && (STATE[ht] !== LIQUID || ht === WATER || ht === BRINE)
         : STATE[ht] !== LIQUID && !buried;
-      if (ok) c.oxygen = Math.min(sp.breathes === 'water' ? 500 : 400, c.oxygen + 4);
+      if (ok) c.oxygen = Math.min(600, c.oxygen + 4);
       else {
         c.oxygen--;
         if (sp.breathes === 'water' && c.oxygen < 250) w.discover(DISC.GASP);
-        if (c.oxygen <= 0) this.hurt(c, 0.4, -1, sp.breathes === 'water' ? 'gasp' : buried ? 'buried' : 'drown');
+        if (c.oxygen <= 0) this.hurt(c, 0.15, -1, sp.breathes === 'water' ? 'gasp' : buried ? 'buried' : 'drown');
       }
       const rt = this.cellType(c.px[sp.rootK], c.py[sp.rootK]);
       if (c.kind === 'human' && ok && rt === BRINE && !c.grounded && !c.swimming) w.discover(DISC.SALT_FLOAT);
@@ -937,9 +956,9 @@ export class Creatures {
       }
       if (load > 2.5) {
         for (let k = 0; k < c.n; k++) c.oy[k] += Math.min(0.06, load * 0.004);
-        this.hurt(c, (load - 2.5) * 0.4, lk, 'crush');
+        this.hurt(c, (load - 2.5) * 0.15, lk, 'crush');
       }
-      if (embedded >= 2) this.hurt(c, embedded * 1.2, lk, 'crush');
+      if (embedded >= 2) this.hurt(c, embedded * 0.35, lk, 'crush');
     }
 
     // A zombie bite turns a person after a while, even after death.
@@ -954,7 +973,7 @@ export class Creatures {
       for (const [dx, dy] of [[0, -r], [r, 0], [-r, 0], [0, r]]) {
         const i = this.cellIndex(x + dx, y + dy);
         if (i < 0 || !(fl[i] & 32)) continue;   // 32: a pulse is in this wire (world.js SPARK)
-        this.hurt(c, 4, k, 'shock', 12);
+        this.hurt(c, 2.5, k, 'shock', 12);
         for (let p = 0; p < c.n; p++) { c.ox[p] += (Math.random() - 0.5) * 0.5; c.oy[p] -= Math.random() * 0.3; }
         w.discover(DISC.SHOCK);
         return;
@@ -982,25 +1001,39 @@ export class Creatures {
   }
 
   // ----- damage -----
+  // How a cause harms the body: cuts open wounds that bleed, blunt force
+  // bruises and breaks.
+  static CUTS = { blast: 1, bite: 1, crush: 0.3, lightning: 0.3 };
+  static BLUNT = { fall: 1, crush: 1, blast: 0.6, shock: 0.2 };
+
+  // What a hit does to one body part: wounds, bruises, bleeding, a broken
+  // limb, and with gore on, a limb torn off by one big enough blow.
+  injure(c, k, amount, cause, jolt = 0) {
+    const cut = Creatures.CUTS[cause] || 0, blunt = Creatures.BLUNT[cause] || 0;
+    const L = c.limb[k];
+    c.wound[k] += amount;
+    c.cut[k] += amount * cut;
+    c.bruise[k] += amount * blunt;
+    if (cut && c.sp.bleeds) c.bleed[k] = Math.min(2, c.bleed[k] + amount * cut * 0.012);
+    c.limbHp[L] -= amount * (L === CORE ? 0.5 : 1);
+    if (this.gore && L !== CORE && c.limbHp[L] < -c.sp.hp * 0.5 && (cut > 0.5 || jolt > 90)) this.detach(c, L);
+  }
+
   // amount: health lost. k: the point that was hit (-1 for the whole body).
   // jolt: a big hit knocks the creature out for a moment.
   hurt(c, amount, k, cause, jolt = 0) {
     if (amount <= 0) return;
     const sp = c.sp;
-    if (k >= 0) c.wound[k] += amount;
-    if (!c.alive) {
-      if (this.gore && jolt > 40 && k >= 0 && c.limb[k] !== CORE && Math.random() < 0.5) this.detach(c, c.limb[k]);
-      return;
-    }
-    c.hp -= amount;
+    if (k >= 0) this.injure(c, k, amount, cause, jolt);
+    if (!c.alive) return;
+    // Part of a cut's harm comes later, as blood loss.
+    c.hp -= amount * (Creatures.CUTS[cause] ? 0.65 : 1);
     c.cause = cause;
     if (amount >= 1 || jolt > 0) { c.hurtT = 150; c.hurtFlash = Math.max(c.hurtFlash, jolt > 4 ? 8 : 3); }
     if (jolt > 6) c.stun = Math.max(c.stun, Math.min(140, jolt * 3));
-    if (this.gore && sp.bleeds) {
-      const n = jolt > 0 ? Math.min(6, Math.round(jolt / 7)) : k >= 0 && Math.random() < amount * 0.15 ? 1 : 0;
-      if (n) this.bleed(c, k >= 0 ? k : sp.rootK, n);
-      if (jolt > 45 && k >= 0 && c.limb[k] !== CORE && Math.random() < 0.4) this.detach(c, c.limb[k]);
-    }
+    // A hard knock throws out a spray of blood from the wound.
+    if (this.gore && sp.bleeds && k >= 0 && jolt > 6 && Creatures.CUTS[cause]) this.spray(c, k, Math.min(8, Math.round(jolt / 6)), 1.2);
+    if (k >= 0 && c.limb[k] === HEAD && c.limbHp[HEAD] < -sp.hp * 0.4) { c.cause = 'head'; this.die(c); return; }
     if (c.hp <= 0) this.die(c);
   }
 
@@ -1011,28 +1044,68 @@ export class Creatures {
     else if (c.cause === 'crush' || c.cause === 'buried') w.discover(DISC.CRUSH);
   }
 
-  // Splash blood (or oil, for a robot) into empty cells around point k.
-  bleed(c, k, n) {
+  // Bleeding, healing and passing out, every step.
+  // Wounds clot slowly. While the heart beats, a bad wound spurts in time
+  // with it; after death blood only oozes out under its own weight.
+  bloodStep(c) {
+    const sp = c.sp;
+    let total = 0, worst = -1, wb = 0;
+    for (let k = 0; k < c.n; k++) {
+      const b = c.bleed[k];
+      if (b < 0.002) { c.bleed[k] = 0; continue; }
+      total += b;
+      if (b > wb) { wb = b; worst = k; }
+      c.bleed[k] = b * (c.alive ? 0.9985 : 0.995);
+      if (this.gore && Math.random() < b * (c.alive ? 0.05 : 0.025)) this.spray(c, k, 1, 0.15);
+    }
+    if (!c.alive) return;
+    if (total > 0) {
+      c.hp -= total * 0.01;
+      if (c.hp <= 0) { c.cause = 'bleed'; this.die(c); return; }
+      if (this.gore && worst >= 0 && wb > 0.5 && c.age % 42 === 0) this.spray(c, worst, 1 + Math.round(wb * 2), 0.9 + wb * 0.5);
+    } else if (c.fire <= 0 && c.hp < sp.hp && c.kind !== 'robot') {
+      // Healing slowly once nothing is bleeding.
+      c.hp = Math.min(sp.hp, c.hp + 0.012);
+      for (let L = 0; L < 7; L++) if (c.limbHp[L] < sp.hp * 0.6) c.limbHp[L] += 0.006;
+    }
+    // Badly hurt: passes out and lies still until a little better.
+    if (c.hp < sp.hp * 0.2) { c.stun = Math.max(c.stun, 10); c.mood = 'out'; }
+  }
+
+  // Blood (or oil, for a robot) out of point k: `force` sends it flying
+  // in an arc away from the body, a small force just lets it drip.
+  spray(c, k, n, force) {
     const w = this.world, t = c.sp.bleeds;
+    if (!t) return;
+    const r = c.r[k] + 0.6;
     for (let j = 0; j < n; j++) {
-      const i = this.cellIndex(c.px[k] + (Math.random() - 0.5) * 2.4, c.py[k] + (Math.random() - 0.3) * 2);
-      if (i >= 0 && w.type[i] === EMPTY) w.set(i, t);
+      const a = Math.random() * Math.PI * 2;
+      const i = this.cellIndex(c.px[k] + Math.cos(a) * r, c.py[k] + Math.sin(a) * r);
+      if (i < 0 || w.type[i] !== EMPTY) continue;
+      w.set(i, t);
+      if (force > 0.3) {
+        w.vx[i] = Math.cos(a) * force * (0.6 + Math.random() * 0.8);
+        w.vy[i] = Math.abs(Math.sin(a)) * force * (0.5 + Math.random() * 0.9) + force * 0.3;
+      }
     }
   }
 
   // A limb comes off: break every stick joining it to the rest of the body.
+  // Both sides of the cut bleed hard at first.
   detach(c, limb) {
     if (limb === CORE) return;
     let broke = false;
     for (const s of c.sticks) {
       if (s.broken) continue;
-      if ((c.limb[s.a] === limb) !== (c.limb[s.b] === limb)) { s.broken = true; s.bleed = 120; broke = true; }
+      if ((c.limb[s.a] === limb) !== (c.limb[s.b] === limb)) {
+        s.broken = true; broke = true;
+        c.bleed[s.a] = Math.max(c.bleed[s.a], 1.4); c.bleed[s.b] = Math.max(c.bleed[s.b], 1.4);
+        c.cut[s.a] += 30; c.cut[s.b] += 30;
+      }
     }
     if (!broke) return;
     for (let k = 0; k < c.n; k++) if (c.limb[k] === limb) c.detached[k] = 1;
-    if (limb === HEAD && c.alive) { c.cause = 'blast'; this.die(c); }
-    const legs = c.detached[c.sp.idx.footL] && c.detached[c.sp.idx.footR];
-    if (legs && c.alive) c.stun = 1e9; // cannot stand any more
+    if (limb === HEAD && c.alive) { c.cause = 'head'; this.die(c); }
   }
 
   turnZombie(c) {
@@ -1042,17 +1115,6 @@ export class Creatures {
     c.colors = z.colors(Math.random, c.colors);
     c.hp = z.hp * (c.alive ? 1 : 0.6); c.alive = true; c.stun = 60; c.fire = 0; c.mood = 'walk';
     this.world.discover(DISC.INFECTION);
-  }
-
-  // Ongoing bleeding from wounds and lost limbs.
-  ooze(c) {
-    if (!this.gore || !c.sp.bleeds) return;
-    for (const s of c.sticks) {
-      if (!s.broken || s.bleed <= 0) continue;
-      s.bleed--;
-      if (Math.random() < 0.06) this.bleed(c, c.detached[s.a] ? s.b : s.a, 1);
-    }
-    if (c.alive && c.hp < c.sp.hp * 0.5 && Math.random() < 0.01) this.bleed(c, c.sp.rootK, 1);
   }
 
   // ----- marking bodies in the grid -----
@@ -1081,7 +1143,6 @@ export class Creatures {
       }
     };
     for (const c of this.list) {
-      this.ooze(c);
       const id = c.id << 8;
       for (const s of c.sticks) {
         if (s.broken || !s.thick) continue;
@@ -1172,13 +1233,20 @@ export class Creatures {
     if (!c.alive) bits.push(c.char >= 0.6 ? 'charred' : 'dead');
     else {
       bits.push(`${Math.max(1, Math.round(c.hp))}/${c.sp.hp} HP`);
-      if (c.fire > 0) bits.push('burning');
+      if (c.mood === 'out' && c.stun > 0) bits.push('unconscious');
+      else if (c.fire > 0) bits.push('burning');
       else if (c.sp.breathes && c.oxygen < 200) bits.push(c.sp.breathes === 'water' ? 'gasping' : 'out of breath');
       else if (c.infected) bits.push('bitten');
       else if (c.swimming) bits.push('swimming');
       else if (c.mood === 'fly') bits.push('flying');
       else if (c.stun > 0 && !c.grab) bits.push('knocked out');
       else if (c.mood === 'flee' || c.mood === 'panic') bits.push('scared');
+      const bleeding = c.bleed.reduce((a, b) => a + b, 0);
+      if (bleeding > 0.5) bits.push('bleeding badly'); else if (bleeding > 0.05) bits.push('bleeding');
+      const broken = [];
+      if (c.limbHp[ARM_L] <= 0 || c.limbHp[ARM_R] <= 0) broken.push('arm');
+      if (c.limbHp[LEG_L] <= 0 || c.limbHp[LEG_R] <= 0) broken.push('leg');
+      if (broken.length) bits.push('broken ' + broken.join(' and '));
     }
     return bits.join(' · ');
   }

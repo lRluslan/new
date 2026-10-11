@@ -37,20 +37,29 @@ They follow the same physics as everything else. Their bodies are made of joined
 fall, tumble and collide. Sand piles up on them and can bury them, and water flows around them. They float or sink by
 their real density: people barely sink in fresh water but float in salt water, robots sink, chickens bob on top.
 
-What hurts them:
-- **Falls and throws:** landing hard hurts. A fall of about 4 m (25 cells) badly hurts a person, about 7 m (40 cells) nearly kills them, and higher is deadly. Being thrown into a wall hurts the same way.
-- **Fire** sets them alight. They panic and run, spreading the flames, until water puts them out. Burnt bodies crumble to ash.
-- **Lava** kills in about a second.
+What hurts them (they are tough: most things take a while to kill, and they heal):
+- **Falls and throws:** landing hard hurts and bruises. A person survives a fall of about 10 m (60 cells) badly hurt;
+  much higher is deadly. Being thrown into a wall hurts the same way.
+- **Fire** sets them alight. They panic and run, spreading the flames, until water puts them out. Burning once is
+  survivable; staying in a fire kills in about 15 seconds. Burnt bodies crumble to ash.
+- **Lava** kills in a few seconds.
 - **Acid** eats at them slowly.
-- **Water:** air breathers hold their breath for about 8 seconds, then drown. Swimmers tire after about 12 seconds.
+- **Water:** air breathers hold their breath for about 10 seconds, then slowly drown. Swimmers tire after about 10 seconds.
 - **Weight:** a heavy pile of sand, stone or metal on top crushes them, and so does being trapped inside a solid block.
-- **Explosions and lightning.**
+- **Explosions and lightning:** a blast right next to them is deadly; further away they are thrown, cut and bruised.
+
+**Injuries.** Each body part is hurt on its own. A broken arm hangs limp; a broken leg makes them limp along, and with
+both legs gone they cannot stand. A hard knock to the head knocks them out. Cuts bleed: blood loss drains their
+health over time, and a bad wound spurts with each heartbeat. Wounds clot after a while, and once nothing is bleeding
+a creature slowly heals. Badly hurt creatures pass out and lie still until they recover a little.
 
 Hover over a creature to see its health. A small health bar appears over it after it gets hurt, and a "!" when it is scared.
 
-The **Blood** button at the bottom turns blood and damage effects on or off. With it on, hurt creatures bleed real
-blood (a liquid that flows and boils away like water), show wounds, and can lose limbs in big blasts or impacts. With it
-off, they just flash when hurt.
+The **Blood** button at the bottom turns blood and gore on or off. With it on, cuts show as dark gashes and blood
+soaks into clothes, blunt hits leave bruises, and blood sprays out in arcs from big hits and pumps from bad wounds.
+It is real liquid: it runs, pools, mixes into water and dries into dark stains after about half a minute. A limb hit
+hard enough can be torn off, leaving a raw stump with the bone showing. After death the heart stops, so blood only
+oozes. With Blood off, creatures just flash when hurt (they are still injured and bleed internally).
 
 ---
 
