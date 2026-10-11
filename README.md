@@ -6,25 +6,11 @@ simple real-world physics: heavy things sink, liquids level out, heat flows
 from hot to cold, and things melt, boil, freeze and burn at their real
 temperatures.
 
-There is **one world**, a block of 256 × 112 × 64 voxels (about 1.8 million cells), with one simulation
-running all the time. You can look at it two ways. Switch with the **2D / 3D**
-button at the top, or press **M**:
-
-- **3D voxel world**: the whole world as a diorama, a floating island of blocks hanging in a starry
-  teal sky with little islets and clouds drifting around it. Turn it to see it from every side,
-  even from underneath, where its rocky base and hanging roots and crystals are. The sides of the
-  island show the world in cross-section, so you can see the soil and stone layers.
-- **2D side view**: one slice cut straight through the same world, drawn as warm autumn pixel art,
-  like looking at the side of an ant farm. Move the cut forward and back with the **Slice** slider
-  or the **W** and **S** keys.
-
-Anything you paint in one view is in the other right away, because it is the
-same world. Switching views never resets anything: fire keeps burning, water
-keeps flowing and lava keeps cooling while you look from the other side.
-
-Because the 2D view is a slice of a 3D world, things can move out of the slice.
-Water poured on flat ground spreads out in depth too, so it gets thinner in
-the side view, just as it really would.
+The world is a side view, drawn as warm autumn pixel art, like looking at the
+side of an ant farm. It fills the whole screen: when the game starts, the
+world is made to match the shape and size of your screen (about 5 screen
+pixels per cell). Reset or Clear fits it again if you have resized the window.
+Zoom in with the scroll wheel or a pinch to see the details.
 
 There are 39 reactions to discover, such as obsidian, boiling, glassmaking, brickmaking, charcoal,
 thermite, casting, rust, lightning, explosions, drowning and zombie infection. The **Discoveries** button in the top right keeps track of them.
@@ -62,9 +48,6 @@ Hover over a creature to see its health. A small health bar appears over it afte
 The **Blood** button at the bottom turns blood and damage effects on or off. With it on, hurt creatures bleed real
 blood (a liquid that flows and boils away like water), show wounds, and can lose limbs in big blasts or impacts. With it
 off, they just flash when hurt.
-
-Creatures dropped in the 2D view stay on that slice so you can keep watching them. Creatures dropped in 3D wander
-anywhere, and only show in the 2D view while they are near the slice.
 
 ---
 
@@ -121,8 +104,8 @@ Next time you only need step 3.
 > The small server in `server.js` gets around this. It only runs on your own
 > computer.
 
-> **Internet:** the 3D engine and the fonts download from the internet the
-> first time you play. The 2D mode still works offline.
+> **Internet:** only the fonts come from the internet. The game itself works
+> offline; without internet it just uses your computer's standard fonts.
 
 ---
 
@@ -143,38 +126,21 @@ GitHub Pages is free for public projects. For a private project it needs a paid 
 
 ## Controls
 
-| | 2D side view | 3D voxel world |
+| | Mouse | Touch |
 |---|---|---|
-| Paint | Left mouse | Left mouse |
-| Erase | Right mouse, or the Eraser tool | Eraser tool |
-| Slice | Slice slider, `W` and `S` (or arrow up and down) | `W` and `S` (the slice flashes in yellow) |
-| Camera | | Right-drag turns all the way around (even underneath), scroll zooms toward the mouse, middle-drag moves, A and D keys orbit |
-| Zoom | Scroll wheel or pinch (zooms toward the mouse), `+` and `−` keys | Scroll wheel or pinch, `+` and `−` keys |
-| Move around | Middle-drag, or drag with two fingers | Middle-drag |
-| Brush size | Shift + scroll, or the `[` and `]` keys | `[` and `]` keys |
-| Creatures | Pick one and click to drop it in. Drag one to carry or throw it | The same, in the orbit view and in fly mode (aim with the crosshair) |
-| Touch | Drag a finger to paint | One finger paints, two fingers turn and zoom |
+| Paint | Left mouse | Drag one finger |
+| Erase | Right mouse, or the Eraser tool | The Eraser tool |
+| Zoom | Scroll wheel (zooms toward the mouse), `+` and `−` keys | Pinch with two fingers |
+| Move around | Middle-drag, or the arrow keys | Drag with two fingers |
+| Brush size | Shift + scroll, or the `[` and `]` keys | The Brush slider |
+| Creatures | Pick one and click to drop it in. Drag one to carry or throw it | The same, with one finger |
 
-**Fly mode (3D, like creative mode in block games).** Press **Tab** (or the
-**Fly** button) to switch between the orbit view and a free camera:
-
-- Move the mouse to look around. The first click captures the mouse; **Esc** frees it.
-- **W A S D** move, **Space** flies up, **Shift** flies down. You speed up the longer you hold a direction,
-  and you can fly anywhere, even through the ground.
-- A crosshair shows where you aim, and the block under it is outlined.
-- **Left click** places the selected element against the face you aim at, **right click** removes,
-  **middle click** picks up the element you aim at. Hold a button to keep building.
-- **Scroll** (or `[` and `]`) sets the size: 0 means one block at a time.
-- **Tab** goes back to the orbit view, looking at where you were.
-
-If the page is not allowed to capture the mouse (some embedded pages), drag with the left mouse button to look around instead, and click without dragging to place.
-
-Everywhere:
+Keys:
 - `1` to `0` pick elements. `E` is the eraser, `H` heat, `J` cool, `G` grab.
 - `Space` pauses, `.` moves one step forward.
-- `R` resets the world and `C` clears it (in either view, since there is one world).
-- `T` turns on the thermal camera (2D).
-- `M` switches between 2D and 3D. `?` opens the help.
+- `R` resets the world and `C` clears it.
+- `T` turns on the thermal camera. The **View** button zooms back out to the whole world.
+- `?` opens the help.
 
 Things to try:
 - Pour lava into the pond and watch obsidian form as the water boils away.
@@ -228,24 +194,18 @@ More things to try:
 
 ## Why JavaScript, and what the game is built with
 
-The game is written in **JavaScript** and runs in the web browser. The 3D mode
-uses **three.js**, a well-known free 3D engine for the web. Here is why:
+The game is written in **JavaScript** and runs in the web browser, with no
+engine or library. Here is why:
 
 - **Nothing to install to play.** Anyone with a browser can play it on Windows,
   Mac, Linux or a phone. You can share it with a link.
-- **One language, one world.** Both views draw the same voxel grid, run by the
-  same physics engine, so every rule (melting, burning, sinking...) is
-  identical whichever way you look at it.
 - **Fast enough.** A falling-sand game updates every cell many times a second.
-  Modern browsers run JavaScript very fast. The engine skips regions where
-  nothing can happen (buried rock, calm water, ground at room temperature),
-  so a step of the whole 1.8-million-cell world takes under 1 ms when it is
-  calm, and around 10 ms in the middle of a big fire. The 3D view only
-  rebuilds the 16×16×16 blocks that changed, and only draws the ones in view.
-- **Still means still.** Resting sand and calm water do not move at all, a
-  voxel's shading is fixed by its position, faces that touch are never drawn
-  twice, and textures are mipmapped, so the 3D world does not flicker or
-  shimmer when nothing is happening or when the camera turns.
+  Modern browsers run JavaScript very fast. The engine also skips regions where
+  nothing can happen (buried rock, calm water, ground at room temperature), so
+  a step of the whole world takes well under a millisecond when it is calm,
+  even with 40 creatures walking about.
+- **Still means still.** Resting sand and calm water do not move at all, so
+  nothing flickers or shimmers when nothing is happening.
 - **No game engine needed for the physics.** Engines like Unity or Godot come
   with rigid-body physics (bouncing boxes). Falling-sand physics is a different
   kind of simulation that every sand game writes itself. A big engine would
@@ -282,12 +242,11 @@ catches fire. Many times a second, every cell:
 | `index.html` | The page: layout of the buttons and panels. |
 | `styles.css` | The dark interface styling. |
 | `src/elements.js` | Every element and its real-world numbers, plus the discoveries list. Change numbers here to change how things behave. |
-| `src/world.js` | The physics engine: the one world both views show. |
+| `src/world.js` | The physics engine. |
 | `src/creatures.js` | The creatures: their ragdoll bodies, muscles, behaviour and everything that can hurt them. |
-| `src/creatureArt.js` | Draws the creatures as pixel art for the 2D view and the palette. |
-| `src/scenes.js` | The world size and the starting scene (autumn pond, dock and trees). |
-| `src/render2d.js` | Draws one slice of the world as 2D pixel art. |
-| `src/render3d.js` | Draws the whole world as 3D voxels with three.js, plus the forest around it. |
-| `src/textures.js` | Draws the pixel textures for the 3D blocks and the palette swatches. |
-| `src/main.js` | Buttons, mouse, keyboard, switching modes and the game loop. |
+| `src/creatureArt.js` | Draws the creatures as pixel art, in the world and on the buttons. |
+| `src/scenes.js` | How big the world is for your screen, and the starting scene (autumn pond, dock and trees). |
+| `src/render2d.js` | Draws the world as pixel art, with zoom and the thermal camera. |
+| `src/swatches.js` | Draws the little previews on the element buttons. |
+| `src/main.js` | Buttons, mouse, touch, keyboard, weather and the game loop. |
 | `server.js` | The small local web server started by `npm start`. |

@@ -3,6 +3,7 @@
 // what has happened to it: wounds, burns, a flash when it is hit.
 
 import { hexToRgb } from './elements.js';
+import { FAR_SIDE, ARM_R, LEG_R } from './creatures.js';
 
 const pack = (r, g, b) => ((255 << 24) | (b << 16) | (g << 8) | r) >>> 0;
 const packHex = h => { const [r, g, b] = hexToRgb(h); return pack(r, g, b); };
@@ -45,8 +46,9 @@ export function drawCreature(c, o) {
   const tint = o.tint;
   const X = wx => (wx - x0) * S, Y = wy => (y0 - wy) * S;
   const k0 = sp.rootK, h = sp.headK, nk = sp.neckK;
-  const rootZ = c.pz[k0];
-  const facing = Math.cos(c.heading) >= 0 ? 1 : -1;
+  const facing = c.facing;
+  // Drawing order: far arm and leg, body, near arm and leg, wing, head.
+  const layer = k => FAR_SIDE[c.limb[k]] ? 0 : c.limb[k] === ARM_R || c.limb[k] === LEG_R ? 2 : 1;
   const char = Math.min(1, c.char * 1.1);
   const flash = c.hurtFlash > 0 ? (gore ? HURT : WHITE) : 0;
   const burning = c.fire > 0;
@@ -83,12 +85,12 @@ export function drawCreature(c, o) {
   const parts = [];
   for (const s of c.sticks) {
     if (s.broken || !s.thick) continue;
-    const z = (c.pz[s.a] + c.pz[s.b]) / 2;
-    parts.push({ kind: 'stick', s, z, far: z < rootZ - 0.25 });
+    const z = Math.min(layer(s.a), layer(s.b)) === 0 ? 0 : Math.max(layer(s.a), layer(s.b));
+    parts.push({ kind: 'stick', s, z, far: z === 0 });
   }
-  for (const d of sp.dotList) parts.push({ kind: 'dot', d, z: c.pz[d.k], far: c.pz[d.k] < rootZ - 0.25 });
-  if (sp.flaps) parts.push({ kind: 'wing', z: rootZ + 0.5, far: false });
-  if (sp.head !== 'fish') parts.push({ kind: 'head', z: c.pz[h] + 0.01, far: false });
+  for (const d of sp.dotList) parts.push({ kind: 'dot', d, z: layer(d.k) + 0.5, far: layer(d.k) === 0 });
+  if (sp.flaps) parts.push({ kind: 'wing', z: 3, far: false });
+  if (sp.head !== 'fish') parts.push({ kind: 'head', z: 4, far: false });
   parts.sort((a, b) => a.z - b.z);
 
   const hx = X(c.px[h]), hy = Y(c.py[h]);

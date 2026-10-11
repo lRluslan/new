@@ -1,7 +1,7 @@
-// The starting world. There is only one world: a 3D block of voxels. The 2D
-// view shows one slice of it, so the scene is laid out so that the middle
-// slice cuts through the pond, the dock and the two big trees, while more
-// trees and bushes fill the depth for the 3D view.
+// The starting world: an autumn glade seen from the side, with rolling
+// ground, a pond with a sandy bed, a wooden dock, log stumps and trees.
+// Everything is placed in fractions of the world size, so the scene fits
+// whatever size the screen makes the world.
 
 import { STONE, DIRT, SAND, WATER, WOOD, PLANT, EMPTY } from './elements.js';
 
@@ -15,135 +15,124 @@ export function rng(seed) {
   };
 }
 
-// Size of the shared world, in cells: wide, fairly tall and moderately deep.
-export const WORLD_SIZE = { W: 256, H: 112, D: 64 };
-
-// Rolling soil height before the pond is dug. The 3D backdrop continues the
-// same hills outside the play area.
-export function groundHeight(x, z, H = WORLD_SIZE.H) {
-  return H * 0.3 + 2.6 * Math.sin(x * 0.045) + 1.6 * Math.sin(x * 0.11 + 1.7) + 1.3 * Math.cos(z * 0.13 + 0.4) + 0.8 * Math.sin((x + z) * 0.09);
+// The world is sized to the screen so it fills it exactly: about 5 screen
+// pixels per cell, with limits so it stays fast on very big screens and
+// keeps enough room on phones.
+export function worldSizeFor(width, height) {
+  let cell = 5;
+  if (width / cell < 150) cell = Math.max(3, width / 150);
+  if (width / cell > 420) cell = width / 420;
+  if (height / cell > 300) cell = height / 300;
+  return { W: Math.max(60, Math.round(width / cell)), H: Math.max(60, Math.round(height / cell)) };
 }
 
-// Ellipsoid of one element, with a scalloped edge so leaf clumps look bushy.
-function blob(w, cx, cy, cz, rx, ry, rz, t, rand, rough = 0.5) {
+// Rolling soil height before the pond is dug.
+function groundHeight(x, W, H) {
+  const u = x / W * 256; // the hills keep their shape at any width
+  return H * 0.3 + H * (0.023 * Math.sin(u * 0.045) + 0.014 * Math.sin(u * 0.11 + 1.7) + 0.008 * Math.sin(u * 0.23 + 0.4));
+}
+
+// A lumpy ellipse of leaves (or stone), with a scalloped edge so it looks bushy.
+function blob(w, cx, cy, rx, ry, t, rand, rough = 0.5) {
   const lobes = 4 + ((rand() * 4) | 0), phase = rand() * 6.28;
   for (let y = Math.floor(cy - ry); y <= Math.ceil(cy + ry); y++)
-    for (let z = Math.floor(cz - rz); z <= Math.ceil(cz + rz); z++)
-      for (let x = Math.floor(cx - rx); x <= Math.ceil(cx + rx); x++) {
-        if (x < 0 || y < 0 || z < 0 || x >= w.W || y >= w.H || z >= w.D) continue;
-        const d = Math.sqrt(((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2 + ((z - cz) / rz) ** 2);
-        const edge = 1 - rough * 0.22 * (0.5 + 0.5 * Math.sin(Math.atan2(y - cy, x - cx) * lobes + phase + z * 0.7));
-        if (d > edge) continue;
-        const i = w.index(x, y, z);
-        if (w.type[i] === EMPTY) { w.set(i, t); w.life[i] = 0; }
-      }
+    for (let x = Math.floor(cx - rx); x <= Math.ceil(cx + rx); x++) {
+      if (x < 0 || y < 0 || x >= w.W || y >= w.H) continue;
+      const d = Math.hypot((x - cx) / rx, (y - cy) / ry);
+      const edge = 1 - rough * 0.22 * (0.5 + 0.5 * Math.sin(Math.atan2(y - cy, x - cx) * lobes + phase));
+      if (d > edge) continue;
+      const i = w.index(x, y);
+      if (w.type[i] === EMPTY) { w.set(i, t); w.life[i] = 0; }
+    }
 }
 
-function tree(w, x0, z0, ground, height, crown, rand) {
+function tree(w, x0, ground, height, crown, rand) {
+  const put = (x, y) => { if (x >= 0 && x < w.W && y >= 0 && y < w.H) w.set(w.index(x, y), WOOD); };
   let x = x0;
   for (let y = ground - 1; y < Math.min(w.H - 2, ground + height); y++) {
     const f = (y - ground) / height;
-    const r = f < 0.08 ? 3 : f < 0.5 ? 2 : f < 0.8 ? 1.6 : 1.2;
-    if (rand() < 0.05) x += rand() < 0.5 ? -1 : 1;
-    const ri = Math.ceil(r);
-    for (let dz = -ri; dz <= ri; dz++) for (let dx = -ri; dx <= ri; dx++) {
-      if (dx * dx + dz * dz > r * r + 0.3) continue;
-      const px = x + dx, pz = z0 + dz;
-      if (px < 0 || pz < 0 || px >= w.W || pz >= w.D || y < 0) continue;
-      w.set(w.index(px, y, pz), WOOD);
-    }
+    const half = f < 0.06 ? 4 : f < 0.5 ? 3 : f < 0.8 ? 2 : 1;
+    if (f > 0.2 && rand() < 0.05) x += rand() < 0.5 ? -1 : 1;
+    for (let dx = -half; dx < half; dx++) put(x + dx, y);
   }
+  // Roots flaring into the ground.
+  for (const s of [-1, 1]) for (let k = 0; k < 4; k++) put(x0 + s * (3 + k), ground - 1 - (k >> 1));
   const top = ground + height;
-  // Two branches reaching sideways along the slice, two more into the depth.
-  for (const [bx, bz] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
-    let px = x, py = ground + Math.floor(height * 0.62), pz = z0;
-    const len = Math.round(crown * (bz ? 0.45 : 0.7));
+  // Two branches reaching out sideways.
+  for (const s of [-1, 1]) {
+    let px = x, py = ground + Math.floor(height * 0.6);
+    const len = Math.round(crown * 0.75);
     for (let k = 0; k < len; k++) {
-      px += bx; pz += bz; if (k % 2 === 0) py++;
-      if (px < 0 || px >= w.W || pz < 0 || pz >= w.D || py + 1 >= w.H) break;
-      w.set(w.index(px, py, pz), WOOD);
-      if (k < len * 0.55) w.set(w.index(px, py + 1, pz), WOOD);
+      px += s; if (k % 2 === 0) py++;
+      put(px, py);
+      if (k < len * 0.5) put(px, py + 1);
     }
   }
   const c = crown;
   const clumps = [
-    [0, 2, 0, c, c * 0.75, c * 0.8],
-    [-c * 0.75, -c * 0.25, 0, c * 0.7, c * 0.55, c * 0.6],
-    [c * 0.75, -c * 0.2, 0, c * 0.7, c * 0.55, c * 0.6],
-    [-c * 0.35, c * 0.45, -c * 0.3, c * 0.6, c * 0.5, c * 0.55],
-    [c * 0.4, c * 0.5, c * 0.3, c * 0.6, c * 0.5, c * 0.55],
-    [0, -c * 0.1, -c * 0.6, c * 0.6, c * 0.5, c * 0.5],
-    [0, -c * 0.1, c * 0.6, c * 0.6, c * 0.5, c * 0.5],
+    [0, 2, c * 1.1, c * 0.8],
+    [-c * 0.8, -c * 0.25, c * 0.75, c * 0.55],
+    [c * 0.8, -c * 0.2, c * 0.75, c * 0.55],
+    [-c * 0.4, c * 0.55, c * 0.65, c * 0.5],
+    [c * 0.45, c * 0.6, c * 0.65, c * 0.5],
   ];
-  for (const [ox, oy, oz, rx, ry, rz] of clumps) blob(w, x + ox, top + oy, z0 + oz, rx, ry, rz, PLANT, rand, 0.55);
+  for (const [ox, oy, rx, ry] of clumps) blob(w, x + ox, top + oy, rx, ry, PLANT, rand, 0.55);
 }
 
 export function autumnGlade(w) {
   w.clear();
-  const { W, H, D } = w;
+  const { W, H } = w;
   const rand = rng(11);
-  const zs = Math.floor(D / 2);
-  const pondX = W * 0.6, pondRX = W * 0.17, pondRZ = D * 0.3;
+  const pondX = W * 0.6, pondR = W * 0.17;
   const level = Math.round(H * 0.3) - 2;
-  const pondD = (x, z) => Math.hypot((x - pondX) / pondRX, (z - zs) / pondRZ);
-  const ground = new Int32Array(W * D);
-  for (let z = 0; z < D; z++) for (let x = 0; x < W; x++) {
-    let h = groundHeight(x, z, H);
-    const d = pondD(x, z);
-    if (d < 1) h = Math.min(h, level - 10 * (1 - d * d) ** 0.7 + 2);
-    ground[x + W * z] = Math.round(h);
+  const depth = Math.max(8, Math.round(H * 0.1));
+  const ground = new Int32Array(W);
+  for (let x = 0; x < W; x++) {
+    let h = groundHeight(x, W, H);
+    const d = Math.abs(x - pondX) / pondR;
+    if (d < 1) h = Math.min(h, level - depth * (1 - d * d) ** 0.7 + 2);
+    ground[x] = Math.round(h);
   }
-  const g = (x, z) => ground[Math.max(0, Math.min(W - 1, Math.round(x))) + W * Math.max(0, Math.min(D - 1, Math.round(z)))];
+  const g = x => ground[Math.max(0, Math.min(W - 1, Math.round(x)))];
 
-  for (let z = 0; z < D; z++) for (let x = 0; x < W; x++) {
-    const h = ground[x + W * z];
-    const soil = 12 + Math.round(2 * Math.sin(x * 0.05 + 2) + Math.cos(z * 0.2));
-    const d = pondD(x, z);
-    const sandy = d < 1.18 || h <= level ? (d > 0.85 ? 3 : 2) : 0; // every pond bed is sand
-    for (let y = 0; y < h; y++) w.set(w.index(x, y, z), y >= h - sandy ? SAND : y < h - soil ? STONE : DIRT);
-    for (let y = h; y <= level; y++) w.set(w.index(x, y, z), WATER);
+  for (let x = 0; x < W; x++) {
+    const h = ground[x];
+    const soil = Math.round(H * 0.1 + 2 * Math.sin(x * 0.05 + 2));
+    const d = Math.abs(x - pondX) / pondR;
+    const sandy = d < 1.18 || h <= level ? (d > 0.85 ? 3 : 2) : 0; // the pond bed is sand
+    for (let y = 0; y < h; y++) w.set(w.index(x, y), y >= h - sandy ? SAND : y < h - soil ? STONE : DIRT);
+    for (let y = h; y <= level; y++) w.set(w.index(x, y), WATER);
   }
 
   // Wooden dock across the pond, with posts down to the bed.
   const dockY = level + 4;
-  const dock0 = Math.round(pondX + pondRX * 0.05), dock1 = Math.min(W - 1, Math.round(pondX + pondRX * 1.15));
-  for (let x = dock0; x <= dock1; x++)
-    for (let z = zs - 2; z <= zs + 2; z++) w.set(w.index(x, dockY, z), WOOD);
+  const dock0 = Math.round(pondX + pondR * 0.05), dock1 = Math.min(W - 1, Math.round(pondX + pondR * 1.15));
+  for (let x = dock0; x <= dock1; x++) w.set(w.index(x, dockY), WOOD);
   for (let x = dock0 + 2; x < dock1; x += 8)
-    for (const z of [zs - 2, zs, zs + 2])
-      for (let y = g(x, z) - 1; y < dockY; y++) w.set(w.index(x, y, z), WOOD);
+    for (let y = g(x) - 1; y < dockY; y++) w.set(w.index(x, y), WOOD);
   // Log stumps standing in the water.
   for (const fx of [-0.62, -0.42, -0.22]) {
-    const x = Math.round(pondX + pondRX * fx);
-    for (let y = g(x, zs) - 1; y <= level + 2; y++)
-      for (let dz = -1; dz <= 1; dz++) for (let dx = 0; dx < 3; dx++) w.set(w.index(x + dx, y, zs + dz), WOOD);
+    const x = Math.round(pondX + pondR * fx);
+    for (let y = g(x) - 1; y <= level + 2; y++) for (let dx = 0; dx < 3; dx++) w.set(w.index(x + dx, y), WOOD);
   }
 
-  // The two big trees sit on the middle slice; the rest fill the depth.
-  tree(w, Math.round(W * 0.17), zs, g(W * 0.17, zs), Math.round(H * 0.36), Math.round(H * 0.13), rand);
-  tree(w, Math.round(W * 0.92), zs, g(W * 0.92, zs), Math.round(H * 0.28), Math.round(H * 0.1), rand);
-  // Positions in depth are fractions of D, so the scene fits any world size.
-  const Z = f => Math.round(D * f);
-  for (const [fx, fz, hf, cf] of [[0.36, 0.15, 0.3, 0.1], [0.08, 0.82, 0.26, 0.09], [0.55, 0.86, 0.24, 0.08], [0.82, 0.12, 0.27, 0.09],
-    [0.27, 0.85, 0.22, 0.08], [0.68, 0.14, 0.25, 0.09], [0.97, 0.8, 0.22, 0.08]]) {
-    const x = Math.round(W * fx), z = Z(fz);
-    tree(w, x, z, g(x, z), Math.round(H * hf), Math.round(H * cf), rand);
+  // A big tree on the left, a smaller one on the right, bushes and rocks.
+  tree(w, Math.round(W * 0.17), g(W * 0.17), Math.round(H * 0.36), Math.round(H * 0.13), rand);
+  tree(w, Math.round(W * 0.92), g(W * 0.92), Math.round(H * 0.28), Math.round(H * 0.1), rand);
+  for (const fx of [0.04, 0.3, 0.38, 0.84]) {
+    const x = Math.round(W * fx);
+    blob(w, x, g(x) + 2, H * 0.05 + rand() * 3, H * 0.035 + rand() * 1.5, PLANT, rand, 0.4);
   }
-  for (const [fx, fz] of [[0.04, 0.5], [0.3, 0.52], [0.38, 0.48], [0.84, 0.5], [0.22, 0.7], [0.47, 0.25], [0.7, 0.92],
-    [0.95, 0.78], [0.15, 0.12], [0.6, 0.3], [0.12, 0.62], [0.88, 0.3]]) {
-    const x = Math.round(W * fx), z = Z(fz);
-    blob(w, x, g(x, z) + 2, z, 5 + rand() * 3, 3.5 + rand() * 1.5, 4 + rand() * 2, PLANT, rand, 0.4);
-  }
-  for (const [fx, fz] of [[0.27, 0.5], [0.8, 0.52], [0.6, 0.12], [0.42, 0.8], [0.06, 0.3]]) {
-    const x = Math.round(W * fx), z = Z(fz);
-    blob(w, x, g(x, z), z, 3, 2.2, 2.6, STONE, rand, 0.2);
+  for (const fx of [0.27, 0.8]) {
+    const x = Math.round(W * fx);
+    blob(w, x, g(x), 3, 2.2, STONE, rand, 0.2);
   }
 }
 
 export function emptyWorld(w) {
   w.clear();
-  for (let z = 0; z < w.D; z++) for (let x = 0; x < w.W; x++) {
-    w.set(w.index(x, 0, z), STONE);
-    w.set(w.index(x, 1, z), STONE);
+  for (let x = 0; x < w.W; x++) {
+    w.set(w.index(x, 0), STONE);
+    w.set(w.index(x, 1), STONE);
   }
 }

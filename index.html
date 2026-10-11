@@ -4,22 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Sandgrove</title>
-<meta name="description" content="A falling-sand physics sandbox with a 2D pixel-art mode and a 3D voxel mode.">
+<meta name="description" content="A 2D falling-sand physics sandbox in pixel art, with ragdoll creatures.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&family=Pixelify+Sans:wght@500;600;700&family=Silkscreen&display=swap">
 <link rel="stylesheet" href="styles.css">
-<script type="importmap">
-{
-  "imports": {
-    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
-    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
-  }
-}
-</script>
 </head>
 <body>
-<div class="app" id="app" data-mode="2d">
+<div class="app" id="app">
   <aside class="rail" aria-label="Elements">
     <div class="brand">
       <svg class="logo" viewBox="0 0 16 16" aria-hidden="true" shape-rendering="crispEdges">
@@ -52,10 +44,6 @@
     <div class="vignette" aria-hidden="true"></div>
 
     <header class="topbar">
-      <div class="seg mode" role="tablist" aria-label="View mode">
-        <button type="button" role="tab" data-mode-btn="2d" aria-selected="true"><b>2D</b><small>Side view</small></button>
-        <button type="button" role="tab" data-mode-btn="3d" aria-selected="false"><b>3D</b><small>Voxel world</small></button>
-      </div>
       <div class="bar transport">
         <button type="button" id="btn-play" class="icon" title="Pause (Space)" aria-label="Pause or play" aria-pressed="false">
           <svg class="i-pause" viewBox="0 0 16 16" aria-hidden="true"><rect x="4" y="3" width="3" height="10" rx="1" fill="currentColor"/><rect x="9" y="3" width="3" height="10" rx="1" fill="currentColor"/></svg>
@@ -90,10 +78,8 @@
 
     <div class="coach" id="coach">
       <b>Pick an element, then paint.</b>
-      <span class="hint-2d mouse">Left mouse paints. Right mouse erases. Scroll zooms, middle-drag pans.</span>
-      <span class="hint-3d mouse">Left mouse paints. Right-drag turns the island, even from below. Scroll zooms to the mouse.</span>
-      <span class="hint-2d touch">Drag a finger to paint. Pinch with two fingers to zoom and move around.</span>
-      <span class="hint-3d touch">Drag one finger to paint. Use two fingers to turn and zoom.</span>
+      <span class="mouse">Left mouse paints. Right mouse erases. Scroll zooms, middle-drag pans.</span>
+      <span class="touch">Drag a finger to paint. Pinch with two fingers to zoom and move around.</span>
     </div>
 
     <div class="inspector idle" id="inspector">
@@ -109,14 +95,8 @@
     <div class="hud bar">
       <label class="brush" for="brush">
         <span class="lbl">Brush</span>
-        <input type="range" id="brush" min="1" max="24" value="5">
-        <output id="brush-out" for="brush">5</output>
-      </label>
-      <span class="sep" aria-hidden="true"></span>
-      <label class="brush slice" for="slice" title="Which slice of the 3D world the side view shows (W / S)">
-        <span class="lbl">Slice</span>
-        <input type="range" id="slice" min="0" max="63" value="32">
-        <output id="slice-out" for="slice">32</output>
+        <input type="range" id="brush" min="1" max="16" value="4">
+        <output id="brush-out" for="brush">4</output>
       </label>
       <span class="sep" aria-hidden="true"></span>
       <div class="seg speed" role="group" aria-label="Simulation speed">
@@ -125,13 +105,9 @@
         <button type="button" data-speed="2" aria-pressed="false">2×</button>
       </div>
       <span class="sep" aria-hidden="true"></span>
-      <button type="button" class="toggle only-2d" id="btn-thermal" aria-pressed="false" title="Thermal camera (T)">
+      <button type="button" class="toggle" id="btn-thermal" aria-pressed="false" title="Thermal camera (T)">
         <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6.5 2.5a1.5 1.5 0 0 1 3 0v6.4a3 3 0 1 1-3 0z" fill="none" stroke="currentColor" stroke-width="1.4"/><circle cx="8" cy="11.5" r="1.4" fill="currentColor"/></svg>
         Thermal
-      </button>
-      <button type="button" class="toggle only-3d" id="btn-orbit" aria-pressed="false" title="Slowly circle the scene">
-        <svg viewBox="0 0 16 16" aria-hidden="true"><ellipse cx="8" cy="8" rx="6" ry="2.6" fill="none" stroke="currentColor" stroke-width="1.4"/><circle cx="8" cy="8" r="1.6" fill="currentColor"/></svg>
-        Orbit
       </button>
       <button type="button" class="toggle" id="btn-weather" title="Change the weather: clear, rain, storm, snow">
         <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 10.5a3 3 0 0 1 .4-6 4 4 0 0 1 7.4 1.6 2.3 2.3 0 0 1-.3 4.4z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M6 12.5l-.6 1.5M9 12.5l-.6 1.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
@@ -141,32 +117,11 @@
         <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.2c1.8 2.6 4 4.9 4 7.3a4 4 0 0 1-8 0c0-2.4 2.2-4.7 4-7.3z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M6.4 10.2a1.7 1.7 0 0 0 1.6 1.5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
         <span id="gore-label">Blood</span>
       </button>
-      <button type="button" class="toggle only-3d mouse-only" id="btn-fly" aria-pressed="false" title="Fly through the world like in creative mode (Tab)">
-        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5 13.5 8 8 13.5 2.5 8z" fill="none" stroke="currentColor" stroke-width="1.4"/><circle cx="8" cy="8" r="1.5" fill="currentColor"/></svg>
-        Fly
-      </button>
-      <button type="button" class="toggle" id="btn-view" title="Reset zoom and camera">View</button>
-      <div class="seg pixel only-3d" role="group" aria-label="Pixel size">
-        <button type="button" data-pixel="1" aria-pressed="false" title="Sharp">1px</button>
-        <button type="button" data-pixel="2" aria-pressed="true" title="Pixel art">2px</button>
-        <button type="button" data-pixel="3" aria-pressed="false" title="Chunky">3px</button>
-      </div>
+      <button type="button" class="toggle" id="btn-view" title="Zoom back out to the whole world">View</button>
       <span class="fps" id="fps" aria-hidden="true"></span>
     </div>
 
     <div class="flash" id="flash" aria-hidden="true"></div>
-    <div class="crosshair" id="crosshair" hidden aria-hidden="true"></div>
-    <div class="fly-hint" id="fly-hint" hidden>
-      <b>Fly mode</b>
-      <span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move · <kbd>Space</kbd> up · <kbd>Shift</kbd> down · left place · right remove · middle pick · scroll brush · <kbd>Tab</kbd> orbit view</span>
-      <span class="lock" id="fly-lock">Click to look around.</span>
-    </div>
-
-    <div class="loading" id="loading" hidden>
-      <div class="spinner" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
-      <p>Growing the forest…</p>
-    </div>
-
     <div class="scrim" id="scrim" hidden></div>
 
     <section class="panel" id="help" hidden aria-labelledby="help-title">
@@ -175,38 +130,31 @@
       <h2 id="help-title">Paint the elements. See what they do.</h2>
       <p class="lead">Everything follows simple physics. Heavy things sink, liquids spread out, heat flows from hot to cold,
         and materials melt, boil, freeze and burn at their real temperatures. Mix things and see what happens.</p>
-      <p class="lead">There is one world. 3D shows all of it; 2D is a cut through it, like looking at the side of an ant farm.
-        Move the cut with the Slice slider or <kbd>W</kbd> <kbd>S</kbd>. Whatever you do in one view is there in the other.</p>
       <div class="cols">
         <div>
-          <h3>2D side view</h3>
+          <h3>Mouse</h3>
           <ul class="keys">
             <li><kbd>Left mouse</kbd> paint</li>
             <li><kbd>Right mouse</kbd> erase</li>
-            <li><kbd>Scroll</kbd> or pinch to zoom · <kbd>Middle-drag</kbd> pan</li>
+            <li><kbd>Scroll</kbd> zoom toward the mouse</li>
+            <li><kbd>Middle-drag</kbd> move around</li>
             <li><kbd>Shift</kbd> + <kbd>Scroll</kbd> brush size</li>
-            <li><kbd>W</kbd> <kbd>S</kbd> move the slice</li>
-            <li><kbd>T</kbd> thermal camera</li>
           </ul>
         </div>
         <div>
-          <h3>3D voxel world</h3>
+          <h3>Touch</h3>
           <ul class="keys">
-            <li><kbd>Left mouse</kbd> paint</li>
-            <li><kbd>Right-drag</kbd> turn around the island (top, sides, underneath)</li>
-            <li><kbd>Scroll</kbd> zoom · <kbd>Middle-drag</kbd> pan</li>
-            <li><kbd>A</kbd> <kbd>D</kbd> orbit · two fingers on touch</li>
-            <li><kbd>Tab</kbd> fly mode: mouse looks, <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move, <kbd>Space</kbd>/<kbd>Shift</kbd> up/down</li>
+            <li>One finger paints</li>
+            <li>Two fingers pinch to zoom and drag to move around</li>
           </ul>
         </div>
         <div>
-          <h3>Everywhere</h3>
+          <h3>Keys</h3>
           <ul class="keys">
-            <li><kbd>1</kbd>–<kbd>0</kbd> elements · <kbd>E</kbd> <kbd>H</kbd> <kbd>J</kbd> tools</li>
-            <li><kbd>[</kbd> <kbd>]</kbd> brush size · <kbd>+</kbd> <kbd>−</kbd> zoom</li>
-            <li><kbd>Space</kbd> pause · <kbd>.</kbd> step</li>
-            <li><kbd>M</kbd> switch 2D/3D · <kbd>R</kbd> reset · <kbd>C</kbd> clear</li>
-            <li><kbd>G</kbd> grab and throw creatures</li>
+            <li><kbd>1</kbd>–<kbd>0</kbd> elements · <kbd>E</kbd> <kbd>H</kbd> <kbd>J</kbd> <kbd>G</kbd> tools</li>
+            <li><kbd>[</kbd> <kbd>]</kbd> brush size · <kbd>+</kbd> <kbd>−</kbd> zoom · arrows move</li>
+            <li><kbd>Space</kbd> pause · <kbd>.</kbd> step · <kbd>T</kbd> thermal camera</li>
+            <li><kbd>R</kbd> reset · <kbd>C</kbd> clear</li>
           </ul>
         </div>
       </div>

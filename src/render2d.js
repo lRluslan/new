@@ -1,7 +1,6 @@
-// 2D renderer: shows one slice (a cross-section at depth z) of the shared 3D
-// world, one pixel per cell, scaled up with crisp edges. Colours are picked
-// per cell from warm autumn palettes, shaded by how deep a cell sits below
-// the open air (grass tops, lit leaf edges, darker deep water).
+// Renderer: draws the world one pixel per cell, scaled up with crisp edges.
+// Colours are picked per cell from warm autumn palettes, shaded by how deep a
+// cell sits below the open air (grass tops, lit leaf edges, darker deep water).
 
 import * as El from './elements.js';
 import { rng } from './scenes.js';
@@ -140,34 +139,38 @@ function buildBackground(W, H) {
 export class Renderer2D {
   constructor(stage, world) {
     this.world = world;
-    const { W, H } = world;
-    this.z = Math.floor(world.D / 2); // which slice is shown
-    // The current slice, copied out of the world each frame.
-    this.slice = { W, H, type: new Uint8Array(W * H), temp: new Float32Array(W * H), shade: new Uint8Array(W * H), life: new Int16Array(W * H) };
     this.wrap = document.createElement('div');
     this.wrap.className = 'view2d';
     this.canvas = document.createElement('canvas');
     this.canvas.className = 'sim2d';
     this.glowCanvas = document.createElement('canvas');
     this.glowCanvas.className = 'glow2d';
-    for (const c of [this.canvas, this.glowCanvas]) { c.width = W; c.height = H; }
     // Creatures get their own layer, drawn at a finer pixel size.
     this.mobCanvas = document.createElement('canvas');
     this.mobCanvas.className = 'mob2d';
-    this.mobCanvas.width = W * MOB_S; this.mobCanvas.height = H * MOB_S;
-    this.mctx = this.mobCanvas.getContext('2d');
-    this.mimg = this.mctx.createImageData(W * MOB_S, H * MOB_S);
-    this.mbuf = new Uint32Array(this.mimg.data.buffer);
-    this.mobShown = false;
-    this.creatures = null;
     this.wrap.append(this.canvas, this.mobCanvas, this.glowCanvas);
     stage.append(this.wrap);
     this.ctx = this.canvas.getContext('2d');
     this.gctx = this.glowCanvas.getContext('2d');
+    this.mctx = this.mobCanvas.getContext('2d');
+    this.creatures = null;
+    this.cursor = null;
+    this.rebuild();
+  }
+
+  // Set up everything that depends on the size of the world.
+  rebuild() {
+    const { W, H } = this.world;
+    this.builtW = W; this.builtH = H;
+    for (const c of [this.canvas, this.glowCanvas]) { c.width = W; c.height = H; }
+    this.mobCanvas.width = W * MOB_S; this.mobCanvas.height = H * MOB_S;
     this.img = this.ctx.createImageData(W, H);
     this.buf = new Uint32Array(this.img.data.buffer);
     this.gimg = this.gctx.createImageData(W, H);
     this.gbuf = new Uint32Array(this.gimg.data.buffer);
+    this.mimg = this.mctx.createImageData(W * MOB_S, H * MOB_S);
+    this.mbuf = new Uint32Array(this.mimg.data.buffer);
+    this.mobShown = false;
     this.bg = buildBackground(W, H);
     this.depth = new Uint8Array(W * H);
     // Fixed per-position patterns: leaf lighting (a bumpy surface lit from the
@@ -194,24 +197,8 @@ export class Renderer2D {
       x: rand() * W, y: rand() * H, s: 0.06 + rand() * 0.1, p: rand() * 6.28,
       c: LEAF_COLORS[(rand() * LEAF_COLORS.length) | 0], big: rand() < 0.35,
     }));
-    this.cursor = null;
-  }
-
-  setVisible(v) { this.wrap.hidden = !v; }
-
-  setSlice(z) { this.z = Math.max(0, Math.min(this.world.D - 1, z)); }
-
-  // Copy slice z of the 3D grid into flat 2D arrays.
-  extract() {
-    const { W, H, D, type, temp, shade, life } = this.world;
-    const sl = this.slice, z = this.z;
-    for (let y = 0; y < H; y++) {
-      const src = W * (z + D * y), dst = W * y;
-      sl.type.set(type.subarray(src, src + W), dst);
-      sl.temp.set(temp.subarray(src, src + W), dst);
-      sl.shade.set(shade.subarray(src, src + W), dst);
-      sl.life.set(life.subarray(src, src + W), dst);
-    }
+    this.cam = null;
+    if (this.view) this.resize(this.view.w, this.view.h);
   }
 
   resize(w, h) {
@@ -220,12 +207,19 @@ export class Renderer2D {
     this.layout();
   }
 
-  // Place the canvas for the current zoom. At zoom 1 the whole slice fits;
-  // zoomed in, the view never slides past the edge of the world.
+  // Scale at zoom 1: the world covers the whole screen. It is made to fit the
+  // screen's shape, so at most a thin edge is cut off if the window changes.
+  baseScale() {
+    const { w, h } = this.view;
+    return Math.max(w / this.world.W, h / this.world.H);
+  }
+
+  // Place the canvases for the current zoom. The view never slides past the
+  // edge of the world.
   layout() {
     const { W, H } = this.world;
     const { w, h } = this.view, cam = this.cam;
-    const s = Math.min(w / W, h / H) * cam.zoom;
+    const s = this.baseScale() * cam.zoom;
     const cw = W * s, ch = H * s;
     let left = w / 2 - cam.u * s, top = h / 2 - cam.v * s;
     left = cw <= w ? (w - cw) / 2 : Math.min(0, Math.max(w - cw, left));
@@ -233,8 +227,8 @@ export class Renderer2D {
     cam.u = (w / 2 - left) / s; cam.v = (h / 2 - top) / s;
     this.scale = s;
     for (const c of [this.canvas, this.glowCanvas, this.mobCanvas]) {
-      c.style.width = Math.round(cw) + 'px'; c.style.height = Math.round(ch) + 'px';
-      c.style.left = Math.round(left) + 'px'; c.style.top = Math.round(top) + 'px';
+      c.style.width = cw + 'px'; c.style.height = ch + 'px';
+      c.style.left = left + 'px'; c.style.top = top + 'px';
     }
   }
 
@@ -244,7 +238,7 @@ export class Renderer2D {
     const { w, h } = this.view;
     const pu = cam.u + (sx - w / 2) / s, pv = cam.v + (sy - h / 2) / s;
     cam.zoom = Math.max(1, Math.min(8, cam.zoom * factor));
-    const s2 = Math.min(w / this.world.W, h / this.world.H) * cam.zoom;
+    const s2 = this.baseScale() * cam.zoom;
     cam.u = pu - (sx - w / 2) / s2; cam.v = pv - (sy - h / 2) / s2;
     this.layout();
   }
@@ -268,7 +262,7 @@ export class Renderer2D {
   }
 
   computeDepth() {
-    const { W, H, type } = this.slice;
+    const { W, H, type } = this.world;
     const depth = this.depth;
     for (let x = 0; x < W; x++) {
       let prev = -1, run = 0, exposed = 64;
@@ -286,8 +280,8 @@ export class Renderer2D {
   }
 
   render(time, thermalView) {
-    this.extract();
-    const { W, H, type, temp, shade, life } = this.slice;
+    if (this.builtW !== this.world.W || this.builtH !== this.world.H) this.rebuild();
+    const { W, H, type, temp, shade, life } = this.world;
     const buf = this.buf, gbuf = this.gbuf, depth = this.depth, leafTone = this.leafTone, stonePat = this.stonePat;
     this.computeDepth();
     buf.set(this.bg);
@@ -439,28 +433,28 @@ export class Renderer2D {
     this.drawMobs(time);
   }
 
-  // Creatures within a few cells of the slice, on their own finer layer.
-  // Under water they take on the water's colour.
+  // Creatures, on their own finer layer. Under water they take on the
+  // water's colour.
   drawMobs(time) {
     const cr = this.creatures;
-    const z = this.z + 0.5;
-    const near = cr ? cr.list.filter(c => Math.abs(c.pz[c.sp.rootK] - z) <= 3.5) : [];
+    const near = cr ? cr.list : [];
     if (!near.length) {
       if (this.mobShown) { this.mbuf.fill(0); this.mctx.putImageData(this.mimg, 0, 0); this.mobShown = false; }
       return;
     }
     const { W, H } = this.world, BW = W * MOB_S, BH = H * MOB_S;
-    const sl = this.slice;
+    const type = this.world.type;
     this.mbuf.fill(0);
     const tint = (px, py, col) => {
       const x = (px / MOB_S) | 0, y = H - 1 - ((py / MOB_S) | 0);
       if (y < 0 || y >= H) return col;
-      const t = sl.type[x + W * y];
+      const t = type[x + W * y];
       return STATE[t] === El.LIQUID ? blendC(col, PAL[t][0], t === WATER || t === BRINE ? 0.38 : 0.6) : col;
     };
     const underwater = c => {
       const k = c.sp.headK;
-      return c.sp.breathes === 'air' && STATE[this.world.type[this.world.index(Math.floor(c.px[k]), Math.min(H - 1, Math.floor(c.py[k])), Math.floor(c.pz[k]))]] === El.LIQUID;
+      const x = Math.max(0, Math.min(W - 1, Math.floor(c.px[k]))), y = Math.max(0, Math.min(H - 1, Math.floor(c.py[k])));
+      return c.sp.breathes === 'air' && STATE[type[x + W * y]] === El.LIQUID;
     };
     const o = { buf: this.mbuf, BW, BH, S: MOB_S, x0: 0, y0: H, gore: cr.gore, tick: Math.floor(time * 12), tint, marks: true, underwater };
     for (const c of near) drawCreature(c, o);

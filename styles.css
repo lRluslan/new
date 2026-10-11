@@ -1,7 +1,6 @@
 /* Sandgrove interface.
    Layout: an element rail on the left, the world filling the rest, and
-   glassy floating controls over it. The accent follows the mode: autumn
-   gold in 2D, forest teal in 3D. */
+   glassy floating controls over it, in autumn gold. */
 :root {
   --bg: #0a0f10;
   --rail: #0e1415;
@@ -15,7 +14,6 @@
   --muted: #95a29c;
   --faint: #5f6c67;
   --gold: #e8b24a;
-  --teal: #5ed6bc;
   --accent: var(--gold);
   --accent-ink: #1d1406;
   --accent-soft: rgba(232, 178, 74, 0.14);
@@ -28,11 +26,6 @@
   --font-body: 'Figtree', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
   color-scheme: dark;
-}
-.app[data-mode="3d"] {
-  --accent: var(--teal);
-  --accent-ink: #032019;
-  --accent-soft: rgba(94, 214, 188, 0.14);
 }
 
 * { box-sizing: border-box; }
@@ -176,9 +169,8 @@ button { font: inherit; color: inherit; }
   user-select: none;
   -webkit-user-select: none;
 }
-/* Above and below the slice: sky and bedrock, so letterboxing blends in. */
-.view2d { position: absolute; inset: 0; background: linear-gradient(#e3a248 50%, #26241f 50%); }
-.slice input { width: 90px; }
+/* The world fills the stage; the sky colour shows only while it loads. */
+.view2d { position: absolute; inset: 0; overflow: hidden; background: #e3a248; }
 .sim2d, .glow2d {
   position: absolute;
   image-rendering: pixelated;
@@ -192,15 +184,6 @@ button { font: inherit; color: inherit; }
   mix-blend-mode: screen;
   opacity: 0.85;
 }
-.view3d {
-  position: absolute;
-  inset: 0;
-  width: 100% !important;
-  height: 100% !important;
-  image-rendering: pixelated;
-  touch-action: none;
-  cursor: crosshair;
-}
 .vignette {
   position: absolute;
   inset: 0;
@@ -210,7 +193,7 @@ button { font: inherit; color: inherit; }
 }
 
 /* Floating glass bars */
-.bar, .seg.mode, .disc-chip, .inspector, .toast, .paused, .coach, .thermal-legend {
+.bar, .disc-chip, .inspector, .toast, .paused, .coach, .thermal-legend {
   background: var(--panel);
   border: 1px solid var(--line);
   box-shadow: var(--shadow);
@@ -255,31 +238,6 @@ button { font: inherit; color: inherit; }
 #btn-play[aria-pressed="true"] { color: var(--accent); background: var(--accent-soft); }
 
 .seg { display: flex; position: relative; }
-.seg.mode {
-  padding: 4px;
-  gap: 4px;
-  border-radius: var(--radius);
-}
-.seg.mode button {
-  display: flex;
-  align-items: baseline;
-  gap: 7px;
-  padding: 8px 14px 8px 12px;
-  border: 0;
-  border-radius: 10px;
-  background: transparent;
-  color: var(--muted);
-  cursor: pointer;
-  transition: background .2s, color .2s;
-}
-.seg.mode b { font: 600 16px/1 var(--font-display); }
-.seg.mode small { font-size: 11.5px; }
-.seg.mode button:hover { color: var(--text); background: var(--raised-hover); }
-.seg.mode button[aria-selected="true"] {
-  background: var(--accent);
-  color: var(--accent-ink);
-  box-shadow: 0 4px 16px -4px var(--accent);
-}
 
 .disc-chip {
   position: absolute;
@@ -383,7 +341,6 @@ button { font: inherit; color: inherit; }
 .coach b { font-weight: 600; }
 .coach span { color: var(--muted); font-size: 12.5px; }
 .coach.out { opacity: 0; }
-.app[data-mode="2d"] .hint-3d, .app[data-mode="3d"] .hint-2d,
 .app[data-input="mouse"] .touch, .app[data-input="touch"] .mouse { display: none; }
 
 .inspector {
@@ -459,7 +416,7 @@ input[type="range"]::-moz-range-thumb {
   width: 14px; height: 14px; border-radius: 4px; background: var(--accent); border: 0;
   box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.35);
 }
-.seg.speed button, .seg.pixel button, .toggle {
+.seg.speed button, .toggle {
   height: 34px;
   padding: 0 11px;
   border: 0;
@@ -472,33 +429,15 @@ input[type="range"]::-moz-range-thumb {
   transition: background .15s, color .15s;
 }
 .seg.speed button { font-family: var(--font-mono); font-size: 12px; }
-.seg.speed button:hover, .seg.pixel button:hover, .toggle:hover { background: var(--raised-hover); color: var(--text); }
-.seg.speed button[aria-pressed="true"], .seg.pixel button[aria-pressed="true"], .toggle[aria-pressed="true"] {
+.seg.speed button:hover, .toggle:hover { background: var(--raised-hover); color: var(--text); }
+.seg.speed button[aria-pressed="true"], .toggle[aria-pressed="true"] {
   background: var(--accent-soft);
   color: var(--accent);
 }
 .toggle { display: inline-flex; align-items: center; gap: 7px; }
 .toggle svg { width: 15px; height: 15px; }
-.app[data-mode="2d"] .only-3d, .app[data-mode="3d"] .only-2d { display: none; }
 .fps { padding: 0 8px; font: 400 10.5px/1 var(--font-mono); color: var(--faint); font-variant-numeric: tabular-nums; }
 
-.loading {
-  position: absolute;
-  inset: 0;
-  z-index: 8;
-  display: grid;
-  place-content: center;
-  justify-items: center;
-  gap: 16px;
-  background: radial-gradient(60% 60% at 50% 50%, #12302d, #070c0c);
-}
-.loading p { margin: 0; font: 500 16px/1 var(--font-display); color: var(--teal); }
-.spinner { display: grid; grid-template-columns: repeat(2, 12px); gap: 4px; }
-.spinner i { width: 12px; height: 12px; background: var(--teal); animation: blink 1s infinite steps(1); }
-.spinner i:nth-child(2) { animation-delay: .25s; }
-.spinner i:nth-child(4) { animation-delay: .5s; }
-.spinner i:nth-child(3) { animation-delay: .75s; }
-@keyframes blink { 50% { opacity: .2; } }
 
 /* ---------- panels ---------- */
 .scrim { position: absolute; inset: 0; z-index: 9; background: rgba(3, 6, 6, 0.55); backdrop-filter: blur(3px); }
@@ -614,16 +553,12 @@ kbd {
   .el { width: 62px; }
   .el kbd { display: none; }
   .topbar { top: 10px; gap: 6px; max-width: calc(100% - 20px); }
-  .seg.mode small { display: none; }
-  .seg.mode button { padding: 8px 12px; }
   .icon { width: 32px; height: 32px; }
-  .disc-chip { top: auto; bottom: 64px; right: 10px; padding: 8px 11px 9px; }
+  .disc-chip { top: 10px; right: 10px; padding: 8px 11px 9px; }
   .disc-chip .label { display: none; }
   .inspector, .thermal-legend { display: none; }
-  .hud { bottom: 10px; flex-wrap: nowrap; }
+  .hud { bottom: 10px; flex-wrap: wrap; }
   .hud .seg, .hud .sep { display: none; }
-  .hud { flex-wrap: wrap; }
-  .brush input, .slice input { width: 70px; }
   .brush input { width: 90px; }
   .fps, #btn-step, .transport .sep:first-of-type { display: none; }
   .coach { top: 62px; bottom: auto; }
@@ -640,52 +575,6 @@ kbd {
   background: var(--accent-soft);
   color: var(--accent);
 }
-
-/* ---------- fly mode ---------- */
-.app[data-input="touch"] .mouse-only { display: none; }
-.crosshair {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  z-index: 4;
-  width: 22px;
-  height: 22px;
-  margin: -11px 0 0 -11px;
-  pointer-events: none;
-  background:
-    linear-gradient(#fff, #fff) center / 2px 22px no-repeat,
-    linear-gradient(#fff, #fff) center / 22px 2px no-repeat;
-  filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.9)) drop-shadow(0 0 2px rgba(0, 0, 0, 0.5));
-}
-.fly-hint {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 74px;
-  width: max-content;
-  max-width: calc(100% - 28px);
-  margin-inline: auto;
-  z-index: 5;
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  align-items: center;
-  gap: 4px 12px;
-  padding: 8px 14px;
-  border-radius: 12px;
-  background: var(--panel);
-  border: 1px solid var(--line);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  font-size: 12px;
-  color: var(--muted);
-  pointer-events: none;
-}
-.fly-hint b { color: var(--accent); font: 600 13px/1 var(--font-display); }
-.fly-hint kbd { padding: 0 4px; font-size: 10px; }
-.fly-hint .lock { color: var(--text); }
-.app[data-fly="on"] .view3d { cursor: none; }
-.app[data-fly="on"] .coach { display: none; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
