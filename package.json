@@ -2,7 +2,7 @@
   "name": "sandgrove",
   "version": "1.0.0",
   "private": true,
-  "description": "A falling-sand physics sandbox with 2D and 3D modes.",
+  "description": "A falling-sand physics sandbox.",
   "type": "module",
   "scripts": {
     "start": "node server.js"

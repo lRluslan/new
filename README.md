@@ -6,14 +6,40 @@ simple real-world physics: heavy things sink, liquids level out, heat flows
 from hot to cold, and things melt, boil, freeze and burn at their real
 temperatures.
 
-The world is a side view, drawn as warm autumn pixel art, like looking at the
-side of an ant farm. It fills the whole screen: when the game starts, the
+The world is a side view, drawn as pixel art, like looking at the side of an
+ant farm. It starts in warm autumn colours, and you can change the look in
+**Settings** (see *Visual styles* below). It fills the whole screen: when the game starts, the
 world is made to match the shape and size of your screen (about 5 screen
 pixels per cell). Reset or Clear fits it again if you have resized the window.
 Zoom in with the scroll wheel or a pinch to see the details.
 
 There are 63 reactions to discover, such as obsidian, boiling, glassmaking, brickmaking, charcoal,
 thermite, casting, rust, lightning, explosions, concrete, fireworks, electricity, popcorn, diamonds, meltdowns, drowning and zombie infection. The **Discoveries** button in the top right keeps track of them.
+
+### Visual styles
+
+Click the gear button at the top (or press `V`) to open **Settings**. It shows
+ten looks for the game, each with a small live preview of *your* world as it
+is right now:
+
+| Style | Look |
+|---|---|
+| Autumn | Warm golden light and turning leaves (the default). |
+| Meadow | A fresh spring day under a blue sky. |
+| Teal forest | Deep teal woods, cool and calm. |
+| Winter | Pale, frosty and quiet. |
+| Desert sunset | Dusky purples and burnt orange. |
+| Synthwave | Neon pinks and cyans in the dark. |
+| Candy | Soft pastel colours. |
+| Game Boy | Four shades of green, like 1989. |
+| Retro 16 | A classic 16-colour palette. |
+| Noir | Black and white. Only fire and blood keep their red. |
+
+Click a preview and the game switches at once, with no reload, and the
+buttons take on the style's colour too. Your choice is saved in the browser,
+so the game opens in the same style next time. Styles only change how things
+look, never how they behave. The thermal camera always shows true heat
+colours.
 
 ### Creatures
 
@@ -154,6 +180,7 @@ Keys:
 - `Space` pauses, `.` moves one step forward.
 - `R` resets the world and `C` clears it.
 - `T` turns on the thermal camera. The **View** button zooms back out to the whole world.
+- `V` opens Settings, where you pick a visual style.
 - `?` opens the help.
 
 Things to try:
@@ -322,7 +349,8 @@ catches fire. Many times a second, every cell:
 | `src/creatures.js` | The creatures: their ragdoll bodies, muscles, behaviour and everything that can hurt them. |
 | `src/creatureArt.js` | Draws the creatures as pixel art, in the world and on the buttons. |
 | `src/scenes.js` | How big the world is for your screen, and the starting scene (autumn pond, dock and trees). |
-| `src/render2d.js` | Draws the world as pixel art, with zoom and the thermal camera. |
+| `src/render2d.js` | Draws the world as pixel art, with zoom, the thermal camera and the style previews. |
+| `src/styles.js` | The visual styles: each one's sky, hills, interface colour and colour recipe. Add a new entry here to make your own style. |
 | `src/swatches.js` | Draws the little previews on the element buttons. |
 | `src/main.js` | Buttons, mouse, touch, keyboard, weather and the game loop. |
 | `server.js` | The small local web server started by `npm start`. |

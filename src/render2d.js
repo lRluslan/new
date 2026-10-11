@@ -5,6 +5,7 @@
 import * as El from './elements.js';
 import { rng } from './scenes.js';
 import { drawCreature, blend as blendC } from './creatureArt.js';
+import { STYLES, makeLut, applyLut } from './styles.js';
 
 const MOB_S = 3; // creature pixels per world cell: creatures are drawn finer than the world
 
@@ -91,21 +92,15 @@ const leafHeight = (x, y) => 0.75 * vnoise(x / 4.5, y / 3.6) + 0.25 * vnoise(x /
 // 4×4 ordered dither, the classic pixel-art way to blend two colours.
 const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5].map(v => (v + 0.5) / 16);
 
-function buildBackground(W, H) {
+function buildBackground(W, H, style) {
   const buf = new Uint32Array(W * H);
   const rand = rng(77);
-  const sky = ['#e3a248', '#eab55a', '#f0c66c', '#f4d27f', '#f7dd95', '#f8e4a8'].map(packHex);
-  for (let r = 0; r < H; r++) {
-    const f = (r / (H * 0.75)) * (sky.length - 1);
-    for (let x = 0; x < W; x++) {
-      const k = Math.min(sky.length - 1, Math.floor(f + BAYER[(r & 3) * 4 + (x & 3)] - 0.5 + 0.5));
-      buf[r * W + x] = sky[Math.max(0, k)];
-    }
-  }
+  buf.set(buildSkyOnly(W, H, style));
+  // Three layers of far-off trees and hills, in the style's colours.
   const layers = [
-    { base: 0.4, spread: 0.3, rmin: 0.05, rmax: 0.09, per: 18, body: '#d9b568', hi: '#e8c77c', lo: '#c7a15b', trunk: '#c29a57' },
-    { base: 0.3, spread: 0.28, rmin: 0.06, rmax: 0.11, per: 26, body: '#a69849', hi: '#c2b257', lo: '#8a7e3c', trunk: '#7f6a3a' },
-    { base: 0.2, spread: 0.24, rmin: 0.07, rmax: 0.12, per: 34, body: '#5f7b34', hi: '#97a43d', lo: '#465f2b', trunk: '#5a4027' },
+    { base: 0.4, spread: 0.3, rmin: 0.05, rmax: 0.09, per: 18, ...style.layers[0] },
+    { base: 0.3, spread: 0.28, rmin: 0.06, rmax: 0.11, per: 26, ...style.layers[1] },
+    { base: 0.2, spread: 0.24, rmin: 0.07, rmax: 0.12, per: 34, ...style.layers[2] },
   ];
   for (const L of layers) {
     const body = packHex(L.body), hi = packHex(L.hi), lo = packHex(L.lo), trunk = packHex(L.trunk);
@@ -153,8 +148,8 @@ function buildBackground(W, H) {
 
 // The same scene at night: a deep blue sky with stars and a moon, and the
 // far hills and trees as dark silhouettes.
-function buildNight(bg, W, H) {
-  const day = buildSkyOnly(W, H);
+function buildNight(bg, W, H, style) {
+  const day = buildSkyOnly(W, H, style);
   const out = new Uint32Array(W * H);
   const rand = rng(4242);
   for (let r = 0; r < H; r++) {
@@ -184,9 +179,9 @@ function buildNight(bg, W, H) {
 }
 
 // Just the sky gradient, to tell which background pixels are open sky.
-function buildSkyOnly(W, H) {
+function buildSkyOnly(W, H, style) {
   const buf = new Uint32Array(W * H);
-  const sky = ['#e3a248', '#eab55a', '#f0c66c', '#f4d27f', '#f7dd95', '#f8e4a8'].map(packHex);
+  const sky = style.sky.map(packHex);
   for (let r = 0; r < H; r++) {
     const f = (r / (H * 0.75)) * (sky.length - 1);
     for (let x = 0; x < W; x++) {
@@ -221,6 +216,9 @@ export class Renderer2D {
     this.shake = 0;         // screen shake after explosions, in screen pixels
     this.night = 0;         // 0 day .. 1 night
     this.lastTime = 0;
+    this.style = STYLES[0];   // visual style (see styles.js)
+    this.lut = null;          // its colour grade, or null to keep colours as they are
+    this.luts = new Map(); this.skies = new Map();
     this.rebuild();
   }
 
@@ -237,10 +235,8 @@ export class Renderer2D {
     this.mimg = this.mctx.createImageData(W * MOB_S, H * MOB_S);
     this.mbuf = new Uint32Array(this.mimg.data.buffer);
     this.mobBox = null;
-    this.bg = buildBackground(W, H);
-    const night = buildNight(this.bg, W, H);
-    this.bgNight = night.sky; this.stars = night.stars;
-    this.bgMix = new Uint32Array(W * H); this.bgMixAt = -1;
+    this.raw = new Uint32Array(W * H);   // last frame before the style's colour grade
+    this.buildSky();
     this.parts.length = 0;
     this.depth = new Uint8Array(W * H);
     // Fixed per-position patterns: leaf lighting (a bumpy surface lit from the
@@ -270,6 +266,54 @@ export class Renderer2D {
     this.cam = null;
     if (this.view) this.resize(this.view.w, this.view.h);
     this.wrap.style.transform = '';
+  }
+
+  // The sky and far hills for the current style, by day and by night.
+  buildSky() {
+    const { W, H } = this.world;
+    this.bg = buildBackground(W, H, this.style);
+    const night = buildNight(this.bg, W, H, this.style);
+    this.bgNight = night.sky; this.stars = night.stars;
+    this.bgMix = new Uint32Array(W * H); this.bgMixAt = -1;
+  }
+
+  lutFor(style) {
+    if (!this.luts.has(style.id)) this.luts.set(style.id, makeLut(style));
+    return this.luts.get(style.id);
+  }
+
+  // Switch visual style at once: new sky, new colour grade, and the creature
+  // layer is redrawn whole on the next frame.
+  setStyle(style) {
+    this.style = style;
+    this.lut = this.lutFor(style);
+    this.buildSky();
+    this.mobBox = [0, 0, this.mobCanvas.width, this.mobCanvas.height];
+  }
+
+  // The world as it is right now, drawn in another style, into `canvas`.
+  preview(style, canvas, gore) {
+    const { W, H, type } = this.world;
+    canvas.width = W; canvas.height = H;
+    const ctx = canvas.getContext('2d');
+    const img = ctx.createImageData(W, H), out = new Uint32Array(img.data.buffer);
+    // Each style's sky is built once per world size, then reused.
+    const key = style.id + ':' + W + 'x' + H;
+    let sky = this.skies.get(key);
+    if (!sky) {
+      const bg = buildBackground(W, H, style);
+      sky = { bg, night: buildNight(bg, W, H, style).sky };
+      this.skies.set(key, sky);
+    }
+    const bg = sky.bg, n = this.night, nb = n > 0.003 ? sky.night : null;
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      const p = (H - 1 - y) * W + x;
+      out[p] = type[x + W * y] !== EMPTY ? this.raw[p] : nb ? blend(bg[p], nb[p], n) : bg[p];
+    }
+    if (this.creatures) for (const c of this.creatures.list) drawCreature(c, { buf: out, BW: W, BH: H, S: 1, x0: 0, y0: H, gore, tick: 0 });
+    const lut = this.lutFor(style);
+    if (lut) applyLut(out, lut);
+    ctx.putImageData(img, 0, 0);
   }
 
   resize(w, h) {
@@ -654,6 +698,9 @@ export class Renderer2D {
       for (let p = 0; p < buf.length; p++) if (gbuf[p] === 0 && buf[p] !== sky[p]) buf[p] = blend(buf[p], NIGHT, k);
     }
     this.updateParts(dt, gbuf);
+    this.raw.set(buf);
+    // The style's colour grade (not on the thermal camera, which must read true).
+    if (this.lut && !thermalView) { applyLut(buf, this.lut); applyLut(gbuf, this.lut); }
     this.drawCursor();
     this.ctx.putImageData(this.img, 0, 0);
     this.gctx.putImageData(this.gimg, 0, 0);
@@ -834,6 +881,7 @@ export class Renderer2D {
     const o = { buf: this.mbuf, BW, BH, S: MOB_S, x0: 0, y0: H, gore: cr.gore, tick: Math.floor(time * 12), tint, marks: true, underwater };
     for (const c of near) drawCreature(c, o);
     this.drawParts(this.mbuf, BW, BH);
+    if (this.lut) for (let py = box[1]; py < box[3]; py++) applyLut(this.mbuf, this.lut, py * BW + box[0], py * BW + box[2]);
     flush();
   }
 
