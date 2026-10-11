@@ -12,7 +12,8 @@ const {
   EMPTY, STONE, DIRT, SAND, SNOW, WATER, OIL, ACID, LAVA, SMOKE, FIRE, WOOD, PLANT,
   ICE, GLASS, SEED, SALT, BRINE, MUD, BRICK, COAL, MOLTEN, MERCURY, HONEY, FUSE, CLONER, DRAIN, STATE, GAS, GLOWS,
   METAL, GOLD, MOLTEN_GOLD, LAMP, BATTERY, SPARKLE, CLOUD, NITROGEN, CEMENT, CONCRETE, SLIME, FUNGUS, NAPALM,
-  FIREWORK, WAX, MOLTEN_WAX, GRAVEL, NITRO, C4, LIQUID, BLOOD, DRIED_BLOOD,
+  FIREWORK, WAX, MOLTEN_WAX, GRAVEL, NITRO, C4, LIQUID, BLOOD, DRIED_BLOOD, URANIUM, HYDROGEN, CO2, DRY_ICE, POPCORN,
+  DIAMOND, TAR, CACTUS, BLOOM, SPONGE, TORCH, BLACK_HOLE, HEATER, FREEZER, HAIL, QUICKSAND, METEOR,
 } = El;
 const SPARK = 32, ZAPPED = 64; // wire flags (see world.js)
 
@@ -53,6 +54,8 @@ const NIGHT = packHex('#0b1224'), NIGHT_SKY = ['#060a18', '#0a1124', '#101a33', 
 const STAR = packHex('#f4f2ff'), MOON = packHex('#f3efd8'), MOON_DARK = packHex('#cfc8ac');
 const FIREFLY = packHex('#d8ff7a');
 // Blood: glossy and bright on top, dark where it pools deep; fresh blood is redder.
+const RAD_GLOW = packHex('#8aff6a'), WHITE = packHex('#ffffff'), TAR_HI = packHex('#5a524c'), SPINE = packHex('#ece4b4');
+const SPONGE_WET = packHex('#a88a2e'), FLAME = packHex('#ffb636'), HOLE_RIM = packHex('#8a4af0'), HOLE_SWIRL = packHex('#c8a8ff');
 const BLOOD_D = ['#b82a1e', '#9a1d16', '#851812', '#70140f', '#5c100c'].map(packHex), BLOOD_HI = packHex('#d84a3a');
 
 // Thermal camera colours from -50 °C to 2500 °C.
@@ -213,6 +216,7 @@ export class Renderer2D {
     this.mctx = this.mobCanvas.getContext('2d');
     this.creatures = null;
     this.cursor = null;
+    this.line = null;
     this.parts = [];        // little visual-only particles: embers, sparks, splashes, fireflies
     this.shake = 0;         // screen shake after explosions, in screen pixels
     this.night = 0;         // 0 day .. 1 night
@@ -589,6 +593,44 @@ export class Renderer2D {
             if (life[i] < 600) c = blend(c, PAL[DRIED_BLOOD][0], (600 - life[i]) / 900);
             break;
           case DRIED_BLOOD: c = PAL[DRIED_BLOOD][(sh >> 3) & 3]; break;
+          case URANIUM:
+            if ((sh & 7) === 0) { c = RAD_GLOW; gbuf[p] = scale(RAD_GLOW, 0.5); }
+            break;
+          case HYDROGEN: c = blend(sky[p], PAL[HYDROGEN][sh & 3], 0.22); break;
+          case CO2: c = blend(sky[p], PAL[CO2][sh & 3], 0.3 + (sh & 3) * 0.04); break;
+          case DRY_ICE: if (exposed && run === 0) c = WHITE; break;
+          case POPCORN: if ((sh & 3) === 0) c = scale(c, 0.9); break;
+          case DIAMOND:
+            if (((x * 7 + y * 3 + tick) % 17) === 0) { c = WHITE; gbuf[p] = scale(WHITE, 0.5); }
+            else if (exposed && run === 0) c = scale(c, 1.1);
+            break;
+          case TAR: if (run === 0 && (sh & 3) === 0) c = TAR_HI; break;
+          case CACTUS:
+            c = PAL[CACTUS][(x & 1) ? 0 : 2];
+            if ((sh & 15) === 0) c = SPINE;
+            break;
+          case BLOOM: c = PAL[BLOOM][sh % 6]; break;
+          case SPONGE:
+            if (((x * 3 + y * 5) % 7) === 0) c = scale(c, 0.7);
+            if (life[i] >= 5) c = blend(c, SPONGE_WET, 0.45);
+            break;
+          case TORCH:
+            c = PAL[TORCH][sh & 1];
+            if (y === H - 1 || type[i + W] !== TORCH) { c = FLAME; gbuf[p] = FLAME; }
+            break;
+          case BLACK_HOLE: {
+            const rim = (x > 0 && type[i - 1] !== BLACK_HOLE) || (x < W - 1 && type[i + 1] !== BLACK_HOLE) ||
+              (y > 0 && type[i - W] !== BLACK_HOLE) || (y < H - 1 && type[i + W] !== BLACK_HOLE);
+            c = rim ? HOLE_RIM : PAL[BLACK_HOLE][2];
+            if (rim) gbuf[p] = HOLE_RIM;
+            if (Math.random() < 0.04) this.swirl(x + 0.5, y + 0.5);
+            break;
+          }
+          case HEATER: c = (y & 1) ? PAL[HEATER][3] : PAL[HEATER][sh & 1]; if (y & 1) gbuf[p] = scale(c, 0.5); break;
+          case FREEZER: c = (y & 1) ? PAL[FREEZER][3] : PAL[FREEZER][sh & 1]; if (y & 1) gbuf[p] = scale(c, 0.35); break;
+          case HAIL: if (exposed && run === 0) c = WHITE; break;
+          case QUICKSAND: if (run === 0) c = scale(c, 0.9); break;
+          case METEOR: c = PAL[METEOR][((sh >> 4) + tick) & 3]; break;
           case NITRO: if (run === 0) c = scale(c, 1.1); break;
           case C4: if (((x + y) & 3) === 0) c = scale(c, 0.9); break;
           case SALT: if (exposed && run === 0) c = SALT_TOP; break;
@@ -629,6 +671,13 @@ export class Renderer2D {
   ember(x, y) { this.addPart(x, y, (Math.random() - 0.5) * 3, 4 + Math.random() * 6, 0.6 + Math.random() * 0.9, FIRE_P[1 + ((Math.random() * 3) | 0)], 0, true); }
   pop(x, y, c) { for (let k = 0; k < 3; k++) this.addPart(x, y, (Math.random() - 0.5) * 8, 6 + Math.random() * 8, 0.5 + Math.random() * 0.4, c, 1, true); }
   spark(x, y) { this.addPart(x, y, (Math.random() - 0.5) * 14, Math.random() * 10, 0.25 + Math.random() * 0.25, SPARK_C, 2, true); }
+  // Matter spiralling into a black hole at (x, y).
+  swirl(x, y) {
+    const a = Math.random() * Math.PI * 2, d = 6 + Math.random() * 6;
+    this.addPart(x + Math.cos(a) * d, y + Math.sin(a) * d, 0, 0, 2.5, Math.random() < 0.5 ? HOLE_SWIRL : HOLE_RIM, 4, true);
+    const q = this.parts[this.parts.length - 1];
+    if (q) { q.cx = x; q.cy = y; }
+  }
   glitter(x, y, c) { this.addPart(x, y, (Math.random() - 0.5) * 2, -1 - Math.random() * 2, 0.6 + Math.random() * 0.6, c, 2, true); }
 
   // Effects the world asked for this step: blasts, firework bursts, splashes, lightning.
@@ -684,6 +733,12 @@ export class Renderer2D {
       if (q.kind === 0) { q.vx += (Math.random() - 0.5) * 30 * dt; q.vy *= 1 - dt * 0.8; }
       else if (q.kind === 1) q.vy -= 45 * dt;
       else if (q.kind === 2) { q.vy -= 12 * dt; q.vx *= 1 - dt * 1.5; }
+      else if (q.kind === 4) {
+        // Orbit inward: mostly sideways, a little toward the centre.
+        const dx = q.cx - q.x, dy = q.cy - q.y, d = Math.hypot(dx, dy) || 1;
+        if (d < 1) continue;
+        q.vx = (-dy / d * 9 + dx / d * 4) * (8 / (d + 2)); q.vy = (dx / d * 9 + dy / d * 4) * (8 / (d + 2));
+      }
       else {
         q.vx += (Math.random() - 0.5) * 20 * dt; q.vy += (Math.random() - 0.5) * 20 * dt;
         q.vx = Math.max(-2.5, Math.min(2.5, q.vx)); q.vy = Math.max(-2.5, Math.min(2.5, q.vy));
@@ -783,6 +838,17 @@ export class Renderer2D {
   }
 
   drawCursor() {
+    // The Line tool's preview: a dotted line from where the drag started.
+    const ln = this.line;
+    if (ln) {
+      const { W, H } = this.world;
+      const n = Math.max(1, Math.abs(ln.x1 - ln.x0), Math.abs(ln.y1 - ln.y0));
+      for (let k = 0; k <= n; k++) {
+        if (k % 3 === 2) continue;
+        const x = Math.round(ln.x0 + (ln.x1 - ln.x0) * k / n), y = Math.round(ln.y0 + (ln.y1 - ln.y0) * k / n);
+        if (x >= 0 && y >= 0 && x < W && y < H) this.buf[(H - 1 - y) * W + x] = pack(255, 248, 225);
+      }
+    }
     const c = this.cursor;
     if (!c) return;
     const { W, H } = this.world;

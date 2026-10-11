@@ -12,7 +12,8 @@ import {
   EMPTY, STONE, DIRT, SAND, GUNPOWDER, SEED, WATER, OIL, ACID, LAVA, SMOKE,
   FIRE, WOOD, PLANT, OBSIDIAN, ASH, ICE, SNOW, SALT, BRINE, MUD, COAL,
   METAL, RUST, MERCURY, FUSE, THERMITE, CLONER, DRAIN, GLASS, BODY, BLOOD, GOLD, CEMENT, CONCRETE, NAPALM, NITRO, C4,
-  WAX, MOLTEN_WAX, FUNGUS, FIREWORK, SPARKLE, CLOUD, BATTERY, LAMP, DRIED_BLOOD, COUNT, SOLID, POWDER, LIQUID, GAS, AMBIENT, FIRE_TEMP, DISC,
+  WAX, MOLTEN_WAX, FUNGUS, FIREWORK, SPARKLE, CLOUD, BATTERY, LAMP, DRIED_BLOOD, URANIUM, HYDROGEN, CORN, POPCORN,
+  DIAMOND, CACTUS, FLOWER, BLOOM, SPONGE, DRY_ICE, CO2, LYE, TORCH, BLACK_HOLE, HEATER, FREEZER, METEOR, HONEY, COUNT, SOLID, POWDER, LIQUID, GAS, AMBIENT, FIRE_TEMP, DISC,
   STATE, DENS, K, CAP, TEMP0, HOT_AT, HOT_TO, HOT_DISC, COLD_AT, COLD_TO, COLD_DISC, LATENT_HOT, LATENT_COLD,
   IGNITE, BURN_TIME, BURN_HEAT, ASH_CHANCE, BURN_TO, OWN_OXYGEN, FLOW, VISC, RISE, LIFE_MIN, LIFE_SPAN, SLIDE,
   HARD, GLOWS,
@@ -47,6 +48,7 @@ const BLAST_R = new Float32Array(COUNT), BLAST_P = new Float32Array(COUNT);
 BLAST_R[GUNPOWDER] = 7; BLAST_P[GUNPOWDER] = 5;
 BLAST_R[NITRO] = 9; BLAST_P[NITRO] = 6;
 BLAST_R[C4] = 13; BLAST_P[C4] = 7;
+BLAST_R[HYDROGEN] = 4; BLAST_P[HYDROGEN] = 3;
 // Electricity runs through metal and gold, and its sparks set these off.
 const CONDUCTS = new Uint8Array(COUNT);
 CONDUCTS[METAL] = 1; CONDUCTS[GOLD] = 1;
@@ -55,7 +57,13 @@ for (const t of [GUNPOWDER, NITRO, C4, FUSE, THERMITE, FIREWORK, OIL, NAPALM]) S
 // Solids that keep working while their life counter runs: growing plants
 // and fungus, and a lamp while it is lit.
 const LIVES = new Uint8Array(COUNT);
-LIVES[PLANT] = 1; LIVES[FUNGUS] = 1; LIVES[LAMP] = 1;
+LIVES[PLANT] = 1; LIVES[FUNGUS] = 1; LIVES[LAMP] = 1; LIVES[CACTUS] = 1;
+// Machines and materials that are always at work.
+const BUSY = new Uint8Array(COUNT);
+for (const t of [SEED, SALT, CLONER, DRAIN, BATTERY, BODY, URANIUM, SPONGE, TORCH, BLACK_HOLE, HEATER, FREEZER, FLOWER]) BUSY[t] = 1;
+// Liquids a sponge can soak up.
+const SOAKS = new Uint8Array(COUNT);
+for (const t of [WATER, BRINE, BLOOD, OIL, HONEY]) SOAKS[t] = 1;
 
 // Cells that can rest: solids and powders. A resting cell at a steady
 // temperature is skipped, which keeps the large buried ground cheap.
@@ -67,16 +75,17 @@ for (let t = 1; t < COUNT; t++) {
   BLOCKS[t] = STATE[t] === SOLID || STATE[t] === POWDER ? 1 : 0;
   BLOCKS_OR_LIQUID[t] = BLOCKS[t] || STATE[t] === LIQUID ? 1 : 0;
   // Seeds, salt and the machines keep working, so they never sleep.
-  CAN_SLEEP[t] = BLOCKS[t] && t !== SEED && t !== SALT && t !== CLONER && t !== DRAIN && t !== BATTERY && t !== BODY ? 1 : 0;
+  CAN_SLEEP[t] = BLOCKS[t] && !BUSY[t] ? 1 : 0;
   WAKE_T[t] = Math.min(IGNITE[t] || Infinity, GLOWS[t] ? Infinity : 525);
 }
 
 export class World {
   constructor(W, H) {
     this.clock = 0;
-    this.found = new Uint8Array(64);
+    this.found = new Uint8Array(128);
     this.events = [];
-    this.blasts = [];   // explosions this step, for the creatures to feel: x, y
+    this.blasts = [];   // explosions this step, for the creatures to feel: x, y, radius
+    this.holes = [];    // black hole cells this step, for the creatures to feel: x, y
     this.hits = [];     // falling grains that landed on a creature: cell, speed × density
     this.fx = [];       // things worth a visual effect: { k: 'blast' | 'burst' | 'splash' | 'bolt', x, y, ... }
     this.steps = 0;
@@ -252,6 +261,7 @@ export class World {
     if (this.quiet > 0) this.quiet--;
     // Regions marked during the last step (or by painting since) are scanned
     // now; this step's activity marks regions for the next one.
+    this.holes.length = 0;
     const awake = this.awakeNext;
     this.awakeNext = this.awake;
     this.awake = awake;
@@ -336,6 +346,7 @@ export class World {
     const T = this.temp[i];
 
     // Phase changes driven by temperature.
+    if (t === CORN && T > HOT_AT[t]) { if (Math.random() < 0.08) this.popCorn(i, x, y); return; }
     if (T > HOT_AT[t]) {
       const lat = LATENT_HOT[t];
       if (lat) {
@@ -370,6 +381,8 @@ export class World {
       if (!OWN_OXYGEN[t] && !this.hasAir(i, x, y)) {
         // Wood that is hot but cannot reach air chars into coal.
         if (t === WOOD) { this.morph(i, COAL); this.discover(DISC.CHARCOAL); return; }
+        // Coal that gets very hot with no air to burn in is squeezed into diamond.
+        if (t === COAL && T > 1500 && Math.random() < 0.02) { this.morph(i, DIAMOND); this.discover(DISC.DIAMOND); return; }
         return this.moveOnly(i, t, x, y);
       }
       this.flags[i] |= BURNING;
@@ -385,12 +398,15 @@ export class World {
     switch (s) {
       case POWDER: {
         if (t === SALT && this.salt(i, x, y)) return;
+        if (t === METEOR) this.meteorTrail(i, x, y);
         const j = this.movePowder(i, t, x, y);
         if (t === SEED && j === i) this.sprout(i, x, y);
+        else if (t === FLOWER && j === i) this.bloom(i, x, y);
         break;
       }
       case LIQUID:
         if (t === ACID && this.corrode(i, x, y)) return;
+        if (t === LYE && this.neutralize(i, x, y)) return;
         // Cement sets into concrete after a while, wherever it is.
         if (t === CEMENT && --this.life[i] <= 0) { this.morph(i, CONCRETE); this.discover(DISC.CONCRETE); return; }
         // Blood dries into a crust after half a minute or so; water keeps it wet.
@@ -411,6 +427,12 @@ export class World {
         else if (t === BATTERY) this.battery(i, x, y);
         else if (t === LAMP) this.lamp(i, x, y);
         else if (t === FUNGUS) this.fungus(i, x, y);
+        else if (t === CACTUS) this.cactus(i, x, y);
+        else if (t === URANIUM) this.decay(i, x, y);
+        else if (t === SPONGE) this.sponge(i, x, y);
+        else if (t === TORCH) this.torch(i, x, y);
+        else if (t === BLACK_HOLE) this.blackHole(i, x, y);
+        else if (t === HEATER || t === FREEZER) { this.temp[i] = TEMP0[t]; this.heatAct[this.regionOf[i]] = 1; }
         else if (t === DRAIN) this.drain(i, x, y);
         else if (t === PLANT) this.growPlant(i, x, y);
         else if (t === WOOD && (this.flags[i] & GROWING)) this.growTree(i, x, y);
@@ -465,6 +487,7 @@ export class World {
       if (Math.random() < 0.1) { this.flags[i] &= ~BURNING; this.temp[i] = Math.min(this.temp[i], IGNITE[t] - 20); }
       return false;
     }
+    if (!OWN_OXYGEN[t] && this.hasNeighbor(i, x, y, CO2) && Math.random() < 0.3) { this.flags[i] &= ~BURNING; this.temp[i] = Math.min(this.temp[i], IGNITE[t] - 20); return false; }
     const life = --this.life[i];
     if (this.temp[i] < BURN_HEAT[t]) this.temp[i] = BURN_HEAT[t];
 
@@ -486,6 +509,7 @@ export class World {
     }
 
     if (life <= 0) {
+      if (t === DIAMOND) { this.set(i, CO2, 900); return true; } // diamond burns to carbon dioxide
       if (BURN_TO[t]) this.morph(i, BURN_TO[t]);            // thermite leaves molten iron
       else if (Math.random() < ASH_CHANCE[t]) this.morph(i, ASH);
       else this.set(i, FIRE, FIRE_TEMP);
@@ -525,7 +549,7 @@ export class World {
     this.set(x + W * y, FIRE, 1500);
     this.blasts.push(x, y, r);
     this.addFx({ k: 'blast', x, y, r });
-    this.discover(kind === NITRO ? DISC.NITRO : kind === C4 ? DISC.C4 : DISC.EXPLODE);
+    this.discover(kind === NITRO ? DISC.NITRO : kind === C4 ? DISC.C4 : kind === HYDROGEN ? DISC.HYDROGEN : kind === METEOR ? DISC.METEOR : DISC.EXPLODE);
   }
 
   // ----- movement -----
@@ -614,6 +638,8 @@ export class World {
       this.discover(DISC.MUD);
       return cur;
     }
+    // A meteor blasts a crater where it lands.
+    if (t === METEOR && (n > 0 || cy === 0)) { this.impact(cur % W, cy); return cur; }
     // Nitroglycerin goes off if it lands hard.
     if (t === NITRO && (n > 0 || cy === 0) && v < -3) { this.explode(cur % W, cy, BLAST_R[NITRO], BLAST_P[NITRO], NITRO); return cur; }
     // Hitting something stops the fall; liquids splash sideways a little.
@@ -710,6 +736,7 @@ export class World {
         break;
       }
     }
+    if (hit && t === METEOR) { this.impact(cx, cy); return cur; }
     if (hit && t === NITRO && Math.abs(vx) + Math.abs(vy) > 3) { this.explode(cx, cy, BLAST_R[NITRO], BLAST_P[NITRO], NITRO); return cur; }
     vx *= hit ? 0.5 : 0.97;
     if (Math.abs(vx) < 0.35) vx = 0;
@@ -722,6 +749,7 @@ export class World {
     const { W, type } = this;
     if (t === FIRE) {
       if (this.temp[i] < FIRE_TEMP) this.temp[i] = FIRE_TEMP;
+      if (this.hasNeighbor(i, x, y, CO2) && Math.random() < 0.6) { this.set(i, EMPTY, this.temp[i] * 0.5); this.discover(DISC.EXTINGUISH); return; }
       if (this.hasNeighbor(i, x, y, WATER) && Math.random() < 0.5) {
         // The flame dies and its heat goes into the water.
         this.set(i, EMPTY, 100);
@@ -743,6 +771,19 @@ export class World {
       }
     } else if (t === SMOKE) {
       if (life <= 0 || (y === this.H - 1 && Math.random() < 0.05)) { this.set(i, EMPTY, this.temp[i]); return; }
+    } else if (life <= 0 && (t === CO2 || t === HYDROGEN)) { this.set(i, EMPTY, this.temp[i]); return; }
+
+    // Heavy gases (carbon dioxide) sink and pool in low places instead of rising.
+    if (DENS[t] > 1.2) {
+      if (y > 0 && Math.random() < 0.6) {
+        const b = i - W, o = type[b];
+        if (o === EMPTY || (STATE[o] === GAS && DENS[o] < DENS[t])) { this.swap(i, b); return; }
+      }
+      if (Math.random() < 0.6) {
+        const dx = Math.random() < 0.5 ? -1 : 1, nx = x + dx;
+        if (nx >= 0 && nx < W && type[i + dx] === EMPTY) this.swap(i, i + dx);
+      }
+      return;
     }
 
     if (y < this.H - 1 && Math.random() < RISE[t]) {
@@ -851,6 +892,145 @@ export class World {
     this.addFx({ k: 'bolt', x, y: hitY });
     this.discover(DISC.LIGHTNING);
     return [x, hitY];
+  }
+
+  // ----- newer things -----
+  // A popping kernel: puffs up into several bits of popcorn and jumps.
+  popCorn(i, x, y) {
+    const { W, H, type } = this;
+    this.morph(i, POPCORN);
+    this.vy[i] = 1.5 + Math.random() * 1.5;
+    this.vx[i] = (Math.random() - 0.5) * 2;
+    for (const n of [y < H - 1 ? i + W : -1, x > 0 ? i - 1 : -1, x < W - 1 ? i + 1 : -1]) {
+      if (n >= 0 && type[n] === EMPTY && Math.random() < 0.7) { this.set(n, POPCORN, this.temp[i]); this.vy[n] = 1 + Math.random() * 2; }
+    }
+    this.discover(DISC.POPCORN);
+  }
+
+  // Uranium warms itself; the more uranium around a cell, the more heat
+  // builds up, so a big pile runs away into a meltdown.
+  decay(i, x, y) {
+    // The heat is added in batches every 16 steps, so a small lump's warmth
+    // is not lost below the world's "close enough to room temperature" rounding.
+    if (((this.steps + i) & 15) !== 0) return;
+    const { W, H, type } = this;
+    let n = 1;
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+      const nx = x + dx, ny = y + dy;
+      if ((dx || dy) && nx >= 0 && nx < W && ny >= 0 && ny < H && type[nx + W * ny] === URANIUM) n++;
+    }
+    this.temp[i] += 0.1 * n * n;
+    this.heatAct[this.regionOf[i]] = 1;
+  }
+
+  // A sponge drinks the liquid around it until it is full; heat dries it.
+  sponge(i, x, y) {
+    const life = this.life;
+    if (this.temp[i] > 100 && life[i] > 0) { life[i] = 0; this.temp[i] -= 30; return; }
+    if (life[i] >= 10 || Math.random() > 0.3) return;
+    const n = this.randomNeighbor(i, x, y);
+    if (n >= 0 && SOAKS[this.type[n]]) { this.set(n, EMPTY, this.temp[n]); life[i]++; }
+  }
+
+  // A torch burns for ever, unless it is under water.
+  torch(i, x, y) {
+    this.temp[i] = 700;
+    if (y >= this.H - 1 || Math.random() > 0.35) return;
+    const up = i + this.W;
+    if (this.type[up] === EMPTY && !this.hasNeighbor(i, x, y, WATER)) { this.set(up, FIRE); this.life[up] = 6 + ((Math.random() * 10) | 0); }
+  }
+
+  // Lye and acid cancel out into salt water and heat.
+  neutralize(i, x, y) {
+    const n = this.randomNeighbor(i, x, y);
+    if (n < 0 || this.type[n] !== ACID) return false;
+    const T = Math.max(this.temp[i], this.temp[n]) + 60;
+    this.set(n, BRINE, T); this.set(i, BRINE, T);
+    this.discover(DISC.NEUTRALIZE);
+    return true;
+  }
+
+  // Cactus grows upward from its tips, now and then budding a side arm.
+  cactus(i, x, y) {
+    if (Math.random() > 0.004 || y >= this.H - 1) return;
+    const { W, type, life } = this;
+    const left = life[i];
+    if (left <= 0) return;
+    const below = y > 0 ? type[i - W] : STONE;
+    if (below !== CACTUS && below !== SAND && below !== DIRT) return;
+    const up = i + W;
+    if (type[up] !== EMPTY) return;
+    this.set(up, CACTUS); life[up] = left - 1; life[i] = 0;
+    // A side arm: one cell out, then it grows upward too.
+    if (left > 3 && left < 8 && Math.random() < 0.25) {
+      const dx = Math.random() < 0.5 ? -1 : 1, nx = x + dx;
+      if (nx >= 0 && nx < W && type[i + dx] === EMPTY && type[i + dx - W] !== EMPTY) {
+        this.set(i + dx, CACTUS); life[i + dx] = 0;
+        if (type[i + dx + W] === EMPTY) { this.set(i + dx + W, CACTUS); life[i + dx + W] = 2 + ((Math.random() * 2) | 0); }
+      }
+    }
+  }
+
+  // A flower seed resting on soil grows a stem and opens a bloom.
+  bloom(i, x, y) {
+    const { W, H, type } = this;
+    if (y === 0 || Math.random() > 0.01) return;
+    const below = type[i - W];
+    if (below !== DIRT && below !== MUD) return;
+    const h = 3 + ((Math.random() * 4) | 0);
+    if (y + h + 1 >= H) return;
+    for (let k = 1; k <= h + 1; k++) if (type[i + k * W] !== EMPTY) return;
+    this.morph(i, PLANT); this.life[i] = 0;
+    for (let k = 1; k < h; k++) { this.set(i + k * W, PLANT); this.life[i + k * W] = 0; }
+    const top = i + h * W, colour = (Math.random() * 6) | 0;
+    for (const j of [top, top + W, x > 0 ? top - 1 : -1, x < W - 1 ? top + 1 : -1]) {
+      if (j < 0 || type[j] !== EMPTY) continue;
+      this.set(j, BLOOM); this.shade[j] = j === top ? 1 : colour === 1 ? 0 : colour;
+    }
+    this.discover(DISC.BLOOM);
+  }
+
+  // A black hole drags nearby things one step closer each time and
+  // swallows what reaches it.
+  blackHole(i, x, y) {
+    const { W, H, type } = this;
+    this.holes.push(x, y);
+    for (let k = 0; k < 6; k++) {
+      // Look outward along a random ray for the first thing to pull in.
+      const a = Math.random() * Math.PI * 2, ca = Math.cos(a), sa = Math.sin(a);
+      let j = -1, d = 1, sx = 0, sy = 0, o = EMPTY;
+      for (; d <= 16; d++) {
+        sx = Math.round(x + ca * d); sy = Math.round(y + sa * d);
+        if (sx < 0 || sx >= W || sy < 0 || sy >= H) break;
+        o = type[sx + W * sy];
+        if (o !== EMPTY && o !== BLACK_HOLE) { j = sx + W * sy; break; }
+      }
+      if (j < 0 || o === BODY || o === CLONER || o === DRAIN || o === BATTERY) continue;
+      if (d < 2) { this.set(j, EMPTY); this.discover(DISC.BLACK_HOLE); continue; }
+      const dx = Math.sign(x - sx), dy = Math.sign(y - sy);
+      const step = Math.abs(x - sx) > Math.abs(y - sy) ? dx : dy * W;
+      const n = j + step;
+      if (type[n] === EMPTY) this.swap(j, n);
+    }
+  }
+
+  // A falling meteor trails fire and smoke; where it lands it blasts a
+  // crater and splashes molten rock.
+  meteorTrail(i, x, y) {
+    if (y >= this.H - 1) return;
+    const up = i + this.W;
+    if (this.type[up] === EMPTY) { if (Math.random() < 0.6) { this.set(up, FIRE, 1200); this.life[up] = 6; } else this.set(up, SMOKE); }
+  }
+
+  impact(x, y) {
+    this.explode(x, y, 8, 6, METEOR);
+    const { W, H, type } = this;
+    for (let k = 0; k < 14; k++) {
+      const nx = x + ((Math.random() - 0.5) * 6 | 0), ny = y + ((Math.random() * 3) | 0);
+      if (nx < 0 || nx >= W || ny < 0 || ny >= H) continue;
+      const j = nx + W * ny;
+      if (type[j] === EMPTY || type[j] === FIRE) { this.set(j, LAVA); this.vy[j] = 2 + Math.random() * 3; this.vx[j] = (Math.random() - 0.5) * 4; }
+    }
   }
 
   // ----- electricity -----

@@ -129,10 +129,10 @@ export function autumnGlade(w) {
   }
 }
 
+// A clear world keeps a stone floor, thick enough to sit above the toolbar
+// at the bottom of the screen so you can see what lands on it.
 export function emptyWorld(w) {
   w.clear();
-  for (let x = 0; x < w.W; x++) {
-    w.set(w.index(x, 0), STONE);
-    w.set(w.index(x, 1), STONE);
-  }
+  const floor = Math.max(2, Math.round(w.H * 0.08));
+  for (let y = 0; y < floor; y++) for (let x = 0; x < w.W; x++) w.set(w.index(x, y), STONE);
 }

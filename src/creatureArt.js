@@ -26,14 +26,16 @@ const VISOR = packHex('#252b33'), ANTENNA = packHex('#e2503a');
 
 // Head shapes: extra blobs on the head (forward, up, radius, all in head
 // radii, and colour), and where the eye sits.
-const ANIMAL = { dog: 1, bird: 1, frog: 1 };
+const ANIMAL = { dog: 1, bird: 1, frog: 1, sheep: 1, cat: 1 };
 const HEAD_EXTRAS = {
   chicken: [[-0.2, 0.95, 0.42, 'comb'], [1.05, 0, 0.4, 'beak']],
   dog: [[0.95, -0.25, 0.58, 'body'], [-0.35, 0.55, 0.45, 'ear']],
   bird: [[1.05, -0.05, 0.38, 'beak']],
   frog: [[0.15, 0.78, 0.42, 'body']],
+  sheep: [[0.75, -0.3, 0.5, 'body'], [-0.45, 0.35, 0.42, 'ear'], [-0.6, 0.75, 0.55, 'wool']],
+  cat: [[0.6, -0.25, 0.42, 'body'], [-0.35, 0.95, 0.32, 'ear'], [0.3, 0.95, 0.32, 'ear']],
 };
-const EYE_AT = { dog: [0.45, 0.25], frog: [0.2, 0.85], bird: [0.4, 0.15] };
+const EYE_AT = { dog: [0.45, 0.25], frog: [0.2, 0.85], bird: [0.4, 0.15], sheep: [0.4, 0.2], cat: [0.45, 0.2] };
 
 function hash(x, y) {
   let h = (Math.imul(x, 374761393) + Math.imul(y, 668265263)) | 0;
@@ -198,7 +200,7 @@ export function drawCreature(c, o) {
     }
     for (const [f, u, rad, key] of extras) { const [px, py] = at(f, u); disc(px, py, r * rad, pal[key], h, false); }
     if (style === 'chicken') { const [px, py] = at(0.75, -0.55); put(Math.floor(px), Math.floor(py), shadeOf(pal.comb, h, 0, 0)); }
-    if (style === 'dog') { const [px, py] = at(1.45, -0.2); put(Math.floor(px), Math.floor(py), pal.nose); }
+    if (style === 'dog' || style === 'cat') { const [px, py] = at(style === 'cat' ? 0.95 : 1.45, -0.2); put(Math.floor(px), Math.floor(py), pal.nose); }
     // Eye, or crosses when dead.
     const [eyeF, eyeU] = EYE_AT[style] || [0.5, 0.05];
     const [exf, eyf] = at(eyeF, eyeU);

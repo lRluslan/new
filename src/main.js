@@ -30,6 +30,9 @@ const TOOLS = [
   { id: 'bomb', name: 'Bomb', key: 'B', desc: 'Click to set off an explosion. A bigger brush makes a bigger blast.' },
   { id: 'bolt', name: 'Lightning', key: 'L', desc: 'Click to call down a lightning bolt. It sets trees alight and turns sand to glass.' },
   { id: 'wind', name: 'Wind', key: 'W', desc: 'Hold to blow things away from the pointer: sand, water, smoke, fire and creatures.' },
+  { id: 'line', name: 'Line', key: 'N', desc: 'Drag to draw a straight line of the last element you picked. Handy for walls, floors and wires.' },
+  { id: 'fill', name: 'Fill', key: 'F', desc: 'Click to fill a space with the last element you picked, like a paint bucket.' },
+  { id: 'meteor', name: 'Meteor', key: 'M', desc: 'Click to call down a meteor. It streaks in from the sky and blasts a crater of molten rock.' },
 ];
 const TOOL_ICONS = {
   erase: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 10 9 4l4 4-6 6H4l-1-1z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M6 7l4 4" stroke="currentColor" stroke-width="1.5"/><path d="M8 14h6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>',
@@ -37,6 +40,9 @@ const TOOL_ICONS = {
   cool: '<svg viewBox="0 0 16 16" aria-hidden="true"><g stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M8 1.5v13M2.4 4.75l11.2 6.5M2.4 11.25l11.2-6.5"/><path d="M6.3 2.8 8 4.3l1.7-1.5M6.3 13.2 8 11.7l1.7 1.5"/></g></svg>',
   bomb: '<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="9.5" r="4.6" fill="currentColor"/><path d="M10.2 5.8 12 4m0 0 1.6-.4M12 4l.4-1.6" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>',
   bolt: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M9.5 1.5 3.8 9h3.6l-1 5.5L12.2 7H8.6z" fill="currentColor"/></svg>',
+  line: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 13 13 3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><circle cx="3" cy="13" r="1.6" fill="currentColor"/><circle cx="13" cy="3" r="1.6" fill="currentColor"/></svg>',
+  fill: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 7.5 7.5 3l5 5-4.5 4.5a1.4 1.4 0 0 1-2 0L3 9.5a1.4 1.4 0 0 1 0-2z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M3.5 8h9" stroke="currentColor" stroke-width="1.2"/><path d="M13.5 10.5c.6 1 1 1.6 1 2.1a1 1 0 0 1-2 0c0-.5.4-1.1 1-2.1z" fill="currentColor"/></svg>',
+  meteor: '<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="10.5" cy="10.5" r="3.2" fill="currentColor"/><path d="M2 2l5.5 5.5M5 1.5l4 4M1.5 5l4 4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>',
   wind: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 6h8.5a2 2 0 1 0-2-2M2 10h11a2 2 0 1 1-2 2M2 8h6" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>',
   grab: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5.2 8.2V3.6a1 1 0 0 1 2 0V7.5m0-.4V2.8a1 1 0 0 1 2 0v4.6m0-.3V3.8a1 1 0 0 1 2 0v5.4c0 2.8-1.6 4.8-4.2 4.8-1.6 0-2.5-.7-3.4-2L2.4 9.2a1 1 0 0 1 1.5-1.3l1.3 1.3" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>',
 };
@@ -66,6 +72,8 @@ const state = {
   stepOnce: false,
   acc: 0,
   held: null,         // the creature being carried by the mouse
+  lastElement: El.SAND, // what the Line and Fill tools use
+  lineFrom: null,     // where a Line drag started
 };
 let touched = false;  // set once the player paints or drops something in
 const BRUSH_MAX = 16;
@@ -170,6 +178,7 @@ function fmtTemp(t) { return `${Math.round(t)} °C`; }
 
 function select(sel) {
   state.selected = sel;
+  if (sel.kind === 'el') state.lastElement = sel.id;
   for (const [k, b] of elButtons) b.classList.toggle('on', k === `${sel.kind}:${sel.id}`);
   const info = $('#info');
   const icon = $('#info-icon');
@@ -179,7 +188,7 @@ function select(sel) {
     facts.push(['State', { 1: 'Solid', 2: 'Powder', 3: 'Liquid', 4: 'Gas' }[e.state]]);
     facts.push(['Density', `${e.density.toLocaleString('en-US')} kg/m³`]);
     if (e.temp !== undefined) facts.push(['Starts at', fmtTemp(e.temp)]);
-    if (e.hot) facts.push([{ [El.EMPTY]: 'Boils', [El.GLASS]: 'Fuses', [El.SALT]: 'Boils', [El.BRICK]: 'Bakes' }[e.hot[1]] || 'Melts', fmtTemp(Math.floor(e.hot[0]))]);
+    if (e.hot) facts.push([{ [El.EMPTY]: 'Boils', [El.GLASS]: 'Fuses', [El.SALT]: 'Boils', [El.BRICK]: 'Bakes', [El.POPCORN]: 'Pops', [El.CO2]: 'Turns to gas' }[e.hot[1]] || 'Melts', fmtTemp(Math.floor(e.hot[0]))]);
     if (e.cold) facts.push([{ [El.ICE]: 'Freezes', [El.WATER]: 'Condenses' }[e.cold[1]] || 'Hardens', fmtTemp(Math.floor(e.cold[0]))]);
     if (e.ignite) facts.push([e.cat === 'explosive' && sel.id !== El.FIREWORK ? 'Explodes' : sel.id === El.FIREWORK ? 'Launches' : 'Ignites', fmtTemp(e.ignite)]);
     info.querySelector('h3').textContent = e.name;
@@ -349,10 +358,44 @@ function strikeAt(x) {
   const f = $('#flash');
   f.classList.remove('on'); void f.offsetWidth; f.classList.add('on');
 }
+// Paint bucket: fill the connected patch of whatever was clicked (usually
+// open air) with an element, up to a limit so the sky cannot all fill at once.
+function floodFill(x0, y0, el) {
+  const { W, H, type } = world;
+  const start = world.index(x0, y0), from = type[start];
+  if (from === el || STATE_MACHINE.has(from)) return;
+  const seen = new Uint8Array(W * H), queue = new Int32Array(Math.min(W * H, 20000));
+  let head = 0, tail = 0;
+  queue[tail++] = start; seen[start] = 1;
+  while (head < tail) {
+    const i = queue[head++];
+    world.set(i, el);
+    const x = i % W, y = (i / W) | 0;
+    for (const n of [x > 0 ? i - 1 : -1, x < W - 1 ? i + 1 : -1, y > 0 ? i - W : -1, y < H - 1 ? i + W : -1]) {
+      if (n < 0 || seen[n] || type[n] !== from || tail >= queue.length) continue;
+      seen[n] = 1; queue[tail++] = n;
+    }
+  }
+}
+const STATE_MACHINE = new Set([El.CLONER, El.DRAIN, El.BATTERY, El.BLACK_HOLE, El.TORCH, El.HEATER, El.FREEZER]);
+
+// A meteor streaks in from high up at an angle toward (x, y).
+function meteor(x, y) {
+  const side = Math.random() < 0.5 ? -1 : 1;
+  const sx = Math.max(1, Math.min(world.W - 2, x + side * (12 + Math.random() * 20))), sy = world.H - 2;
+  const i = world.index(Math.round(sx), sy);
+  world.set(i, El.METEOR);
+  const steps = Math.max(4, (sy - y) / 6);
+  world.vx[i] = Math.max(-6, Math.min(6, (x - sx) / steps));
+  world.vy[i] = -6;
+}
+
 function clickTool(mode, e) {
   const c = r2d.toCell(e.clientX, e.clientY);
   if (!c.inside) return;
   if (mode === 'bomb') world.explode(c.x, c.y, 5 + state.brush * 0.6, 5 + state.brush * 0.15);
+  else if (mode === 'fill') floodFill(c.x, c.y, state.lastElement);
+  else if (mode === 'meteor') meteor(c.x, c.y);
   else strikeAt(c.x);
 }
 
@@ -409,7 +452,8 @@ function startAction(mode, e) {
   dismissCoach();
   touched = true;
   if (mode === 'spawn' || mode === 'grab') { pressCreature(mode, e); return; }
-  if (mode === 'bomb' || mode === 'bolt') { clickTool(mode, e); return; }
+  if (mode === 'bomb' || mode === 'bolt' || mode === 'fill' || mode === 'meteor') { clickTool(mode, e); return; }
+  if (mode === 'line') { const c = r2d.toCell(e.clientX, e.clientY); if (c.inside) state.lineFrom = c; return; }
   state.painting = mode;
   state.lastCell = null;
 }
@@ -448,7 +492,21 @@ canvas.addEventListener('pointerup', endPointer);
 canvas.addEventListener('pointercancel', endPointer);
 canvas.addEventListener('pointerleave', () => { if (!state.painting && !state.held) state.pointer = null; });
 const stopPaint = () => { state.painting = null; state.lastCell = null; };
-window.addEventListener('pointerup', () => { stopPaint(); dropHeld(); });
+window.addEventListener('pointerup', () => { finishLine(); stopPaint(); dropHeld(); });
+// The Line tool draws when the button is let go.
+function finishLine() {
+  const a = state.lineFrom;
+  state.lineFrom = null;
+  r2d.line = null;
+  if (!a || !state.pointer) return;
+  const b = r2d.toCell(state.pointer.x, state.pointer.y);
+  const r = Math.max(0.5, state.brush * 0.5);
+  const n = Math.max(1, Math.abs(b.x - a.x), Math.abs(b.y - a.y));
+  for (let k = 0; k <= n; k++) {
+    const x = Math.round(a.x + (b.x - a.x) * k / n), y = Math.round(a.y + (b.y - a.y) * k / n);
+    if (x >= 0 && y >= 0 && x < world.W && y < world.H) world.paint(x, y, r, 'add', state.lastElement, 9);
+  }
+}
 window.addEventListener('pointercancel', () => { stopPaint(); dropHeld(); });
 
 // The brush paints along the path the pointer took since the last frame.
@@ -456,7 +514,8 @@ function paint() {
   if (!state.pointer) { r2d.cursor = null; return null; }
   const c = r2d.toCell(state.pointer.x, state.pointer.y);
   const r = state.brush;
-  const mobTool = state.selected.kind === 'mob' || (state.selected.kind === 'tool' && (state.selected.id === 'grab' || state.selected.id === 'bolt'));
+  const mobTool = state.selected.kind === 'mob' || (state.selected.kind === 'tool' && ['grab', 'bolt', 'fill', 'meteor'].includes(state.selected.id));
+  r2d.line = state.lineFrom && c.inside ? { x0: state.lineFrom.x, y0: state.lineFrom.y, x1: c.x, y1: c.y } : null;
   r2d.cursor = c.inside && !mobTool ? { x: c.x, y: c.y, r } : null;
   if (state.held) {
     const p = worldPoint(state.pointer.x, state.pointer.y);
@@ -478,7 +537,7 @@ function paint() {
   return c.inside ? world.index(c.x, c.y) : null;
 }
 
-const KEY_TOOLS = { e: 'erase', h: 'heat', j: 'cool', g: 'grab', b: 'bomb', l: 'bolt', w: 'wind' };
+const KEY_TOOLS = { e: 'erase', h: 'heat', j: 'cool', g: 'grab', b: 'bomb', l: 'bolt', w: 'wind', n: 'line', f: 'fill', m: 'meteor' };
 window.addEventListener('keydown', e => {
   if (e.target instanceof HTMLInputElement && e.target.type !== 'range') return;
   if (e.metaKey || e.ctrlKey || e.altKey) return;
@@ -571,8 +630,8 @@ new ResizeObserver(resize).observe(stage);
 
 // ----- weather -----
 // Rain and snow fall from the top of the sky. Storms add lightning.
-const WEATHERS = ['clear', 'rain', 'storm', 'snow'];
-const WEATHER_NAMES = { clear: 'Sunny', rain: 'Rain', storm: 'Storm', snow: 'Snow' };
+const WEATHERS = ['clear', 'rain', 'storm', 'snow', 'hail', 'acid'];
+const WEATHER_NAMES = { clear: 'Sunny', rain: 'Rain', storm: 'Storm', snow: 'Snow', hail: 'Hail', acid: 'Acid rain' };
 state.weather = WEATHERS.includes(store.get('weather', 'clear')) ? store.get('weather', 'clear') : 'clear';
 let nextStrike = 0;
 function setWeather(w) {
@@ -587,8 +646,8 @@ $('#btn-weather').addEventListener('click', () => setWeather(WEATHERS[(WEATHERS.
 function weatherStep() {
   const w = state.weather;
   if (w === 'clear') return;
-  const t = w === 'snow' ? El.SNOW : El.WATER;
-  const n = (w === 'storm' ? 2.2 : w === 'snow' ? 0.9 : 1.3) * world.W / 200;
+  const t = { snow: El.SNOW, hail: El.HAIL, acid: El.ACID }[w] || El.WATER;
+  const n = (w === 'storm' ? 2.2 : w === 'snow' ? 0.9 : w === 'hail' ? 0.7 : 1.3) * world.W / 200;
   const count = Math.floor(n) + (Math.random() < n % 1 ? 1 : 0);
   for (let k = 0; k < count; k++) {
     const i = world.index((Math.random() * world.W) | 0, world.H - 1);

@@ -15,7 +15,7 @@ import * as El from './elements.js';
 
 const {
   EMPTY, STATE, SOLID, POWDER, LIQUID, DENS, VISC, FIRE, LAVA, MOLTEN, ACID, WATER, BRINE, BLOOD, BODY, OIL, ASH,
-  SMOKE, HONEY, DISC,
+  SMOKE, HONEY, DISC, RUBBER, CACTUS, CO2, URANIUM, PLANT, LYE,
 } = El;
 
 const GRAVITY = 0.035;    // cells per step²: 9.8 m/s² when a cell is about 17 cm and a step is 1/50 s
@@ -232,7 +232,57 @@ export const SPECIES = {
     },
   },
 };
-export const SPECIES_ORDER = ['human', 'zombie', 'robot', 'dog', 'chicken', 'bird', 'frog', 'fish'];
+// Four-legged animals share one skeleton, scaled.
+function quadruped(len, height, head) {
+  const f = len / 2;
+  return {
+    points: [
+      ['hips', -f, height, 0.6, 1.4, CORE, 0.35],
+      ['chest', f, height + 0.2, 0.65, 1.4, CORE, 0.35],
+      ['head', f + head[0], height + head[1], 0.6, 0.8, HEAD, 0.3],
+      ['tail', -f - 0.9, height + 0.5, 0.35, 0.3, TAIL, 0.15],
+      ['frontL', f + 0.15, 0.4, 0.4, 0.5, LEG_L, 0.25, 'foot', 0],
+      ['frontR', f - 0.15, 0.4, 0.4, 0.5, LEG_R, 0.25, 'foot', 1],
+      ['backL', -f - 0.15, 0.4, 0.4, 0.5, LEG_L, 0.25, 'foot', 1],
+      ['backR', -f + 0.15, 0.4, 0.4, 0.5, LEG_R, 0.25, 'foot', 0],
+    ],
+    sticks: [
+      ['chest', 'head', 0.8, 'body'], ['hips', 'tail', 0.45, 'tail'],
+      ['chest', 'frontL', 0.5, 'leg'], ['chest', 'frontR', 0.5, 'leg'], ['hips', 'backL', 0.5, 'leg'], ['hips', 'backR', 0.5, 'leg'],
+      ['head', 'hips', 0, null, 0.5], ['tail', 'chest', 0, null, 0.4],
+      ['frontL', 'hips', 0, null, 0.3], ['frontR', 'hips', 0, null, 0.3], ['backL', 'chest', 0, null, 0.3], ['backR', 'chest', 0, null, 0.3],
+    ],
+    dots: [],
+    root: 'hips', headPt: 'head', neckPt: 'chest', headR: 0.7, walker: true,
+  };
+}
+{
+  const sheep = quadruped(2.2, 2.6, [1.0, 0.7]);
+  sheep.sticks.unshift(['hips', 'chest', 2.6, 'wool']);
+  SPECIES.sheep = {
+    ...sheep, name: 'Sheep', density: 950, hp: 60, breathes: 'air', burns: 1.6, bleeds: BLOOD,
+    walk: 0.035, run: 0.13, swims: true, heatMax: 50, acid: 1, head: 'sheep', grazes: true, fears: 'dog',
+    desc: 'Grazes on grass, leaves and bushes, and runs from dogs. Its thick wool catches fire very easily.',
+    colors(rand) {
+      const wool = pick(rand, ['#f2ede2', '#e8e0d0', '#d8d0c0', '#4a4440']);
+      return { wool, body: '#2e2a28', leg: '#2e2a28', tail: wool, ear: '#2e2a28', eye: '#f2e6c8' };
+    },
+  };
+  const cat = quadruped(1.8, 1.9, [0.8, 0.9]);
+  cat.sticks.unshift(['hips', 'chest', 1.3, 'body']);
+  cat.points[3][2] += 1.2; // tail held up
+  SPECIES.cat = {
+    ...cat, name: 'Cat', density: 980, hp: 45, breathes: 'air', burns: 1.1, bleeds: BLOOD,
+    walk: 0.06, run: 0.22, swims: true, heatMax: 50, acid: 1, head: 'cat', chases: 'bird', fears: 'dog', hatesWater: true, landsOnFeet: true,
+    desc: 'Quick and nimble: hunts birds, always lands on its feet so falls barely hurt, runs from dogs and hates water.',
+    colors(rand) {
+      const c = pick(rand, [['#e08a3a', '#b8682a'], ['#3a3632', '#1e1c1a'], ['#a8a49c', '#787470'], ['#f0ece4', '#c8c0b4']]);
+      return { body: c[0], leg: c[1], tail: c[0], ear: c[1], nose: '#e88a9a', eye: '#8ad84a' };
+    },
+  };
+  SPECIES.dog.fears = null;
+}
+export const SPECIES_ORDER = ['human', 'zombie', 'robot', 'dog', 'cat', 'sheep', 'chicken', 'bird', 'frog', 'fish'];
 
 // Work out indices and rest lengths once per species.
 for (const sp of Object.values(SPECIES)) {
@@ -365,9 +415,28 @@ export class Creatures {
     }
   }
 
-  // Explosions and falling grains from the world's last step.
+  // Explosions, black holes and falling grains from the world's last step.
   feelWorld() {
     const w = this.world;
+    const holes = w.holes;
+    if (holes.length) {
+      for (let j = this.list.length - 1; j >= 0; j--) {
+        const c = this.list[j];
+        let eaten = false;
+        for (let h = 0; h < holes.length && !eaten; h += 2) {
+          const hx = holes[h] + 0.5, hy = holes[h + 1] + 0.5;
+          for (let k = 0; k < c.n; k++) {
+            const dx = hx - c.px[k], dy = hy - c.py[k], d = Math.hypot(dx, dy);
+            if (d > 20) continue;
+            if (d < 1.6) { eaten = true; break; }
+            const f = 0.06 * (1 - d / 20) / d;
+            c.ox[k] -= dx * f; c.oy[k] -= dy * f;
+            if (c.alive && d < 14) { c.stun = Math.max(c.stun, 10); c.mood = 'panic'; }
+          }
+        }
+        if (eaten) { this.list.splice(j, 1); w.discover(DISC.BLACK_HOLE); }
+      }
+    }
     const b = w.blasts;
     for (let j = 0; j < b.length; j += 3) this.blast(b[j] + 0.5, b[j + 1] + 0.5, b[j + 2] * 1.7);
     b.length = 0;
@@ -462,7 +531,7 @@ export class Creatures {
     }
     if (c.impact > FALL_HURTS && c.age > 5) {
       const k = c.impactK;
-      const dmg = (c.impact - FALL_HURTS) * 45 * (k === sp.headK ? 1.3 : 1);
+      const dmg = (c.impact - FALL_HURTS) * 45 * (k === sp.headK ? 1.3 : 1) * (sp.landsOnFeet ? 0.1 : 1);
       this.hurt(c, dmg, k, 'fall', dmg);
     }
     this.bloodStep(c);
@@ -499,8 +568,11 @@ export class Creatures {
       if (y < r) { y = r; ny = 1; }
       const x0 = Math.max(0, Math.floor(x - r)), x1 = Math.min(W - 1, Math.floor(x + r));
       const y0 = Math.max(0, Math.floor(y - r)), y1 = Math.min(H - 1, Math.floor(y + r));
+      let bouncy = false;
       for (let cy = y0; cy <= y1; cy++) for (let cx = x0; cx <= x1; cx++) {
-        if (!HARD_CELL[type[cx + W * cy]]) continue;
+        const ct = type[cx + W * cy];
+        if (!HARD_CELL[ct]) continue;
+        if (ct === RUBBER) bouncy = true;
         // Closest point of the cell to the point's centre.
         const qx = x < cx ? cx : x > cx + 1 ? cx + 1 : x;
         const qy = y < cy ? cy : y > cy + 1 ? cy + 1 : y;
@@ -531,7 +603,12 @@ export class Creatures {
         const nl = Math.hypot(nx, ny); nx /= nl; ny /= nl;
         let vx = vx0, vy = vy0;
         const vn = vx * nx + vy * ny;
-        if (vn < 0) {
+        if (vn < 0 && bouncy) {
+          // Rubber gives the energy back: a bounce, not a crash.
+          vx -= nx * vn * 1.75; vy -= ny * vn * 1.75;
+          c.ox[k] = x - vx; c.oy[k] = y - vy;
+          if (-vn > 0.5) this.world.discover(DISC.BOUNCE);
+        } else if (vn < 0) {
           if (first && -vn > c.impact) { c.impact = -vn; c.impactK = k; }
           vx -= nx * vn; vy -= ny * vn;
           const fr = ny > 0.5 ? 0.35 : 0.15;
@@ -627,6 +704,10 @@ export class Creatures {
       if (inLiquid && sp.swims) c.swimming = true;
     }
     if (inLiquid && ground >= 0 && ry - ground > rootU + 1.5) c.swimming = sp.swims;
+    // Quicksand, tar, slime and honey are too thick to swim or wade through.
+    const feetT = this.cellType(rx, (ground >= 0 ? ground : ry - rootU) + 0.6);
+    const thick = (inLiquid && VISC[rootT] < 0.2) || (STATE[feetT] === LIQUID && VISC[feetT] < 0.2);
+    if (thick) c.swimming = false;
 
     // Treading water: swimmers keep their head up until they tire.
     if (c.swimming) {
@@ -643,7 +724,7 @@ export class Creatures {
       c.hopT = c.mood === 'flee' ? 22 + Math.random() * 15 : 40 + Math.random() * 40;
       for (let k = 0; k < c.n; k++) { c.oy[k] -= 0.42; c.ox[k] -= fx * 0.22; }
     }
-    const speed = c.grounded && !sp.hops ? c.speed * (inLiquid ? 0.55 : 1) * c.limp : 0;
+    const speed = c.grounded && !sp.hops ? c.speed * (thick ? 0.08 : inLiquid ? 0.55 : 1) * c.limp : 0;
     if (speed > 0.005) c.phase += speed * 0.9;
     const stride = Math.min(sp.flaps ? 0.7 : 1.7, speed * 22), lift = Math.min(1, speed * 12);
     const bob = speed > 0.005 ? 0 : 0.08 * Math.sin(c.age * 0.05);
@@ -663,7 +744,7 @@ export class Creatures {
         else F -= stride * 0.4 * sn;
       }
       if (k === k0) U += bob;
-      const tx = rx + fx * F, ty = base + U;
+      const tx = rx + fx * (F - sp.rest[k0][0]), ty = base + U;
       let m = P[6] * c.strength * support;
       // A broken arm or leg hangs limp.
       if (P[5] !== CORE && P[5] !== HEAD && c.limbHp[P[5]] <= 0) m = 0;
@@ -684,7 +765,7 @@ export class Creatures {
     for (let k = 0; k < c.n; k++) {
       if (c.detached[k]) continue;
       const P = sp.points[k];
-      const tx = rx + fx * P[1], ty = ry + P[2] - rootU;
+      const tx = rx + fx * (P[1] - sp.rest[k0][0]), ty = ry + P[2] - rootU;
       let vx = c.px[k] - c.ox[k], vy = c.py[k] - c.oy[k];
       // GRAVITY is added back so that, after falling this step, it moves as asked.
       const gx = (tx - c.px[k]) * 0.35 + fx * c.speed, gy = (ty - c.py[k]) * 0.35 + climb + GRAVITY;
@@ -710,7 +791,7 @@ export class Creatures {
     c.phase += 0.25;
     const rx = c.px[k0], ry = c.py[k0], fx = c.facing;
     for (let k = 0; k < c.n; k++) {
-      const F = sp.rest[k][0];
+      const F = sp.rest[k][0] - sp.rest[k0][0];
       const wig = k >= 2 ? Math.sin(c.phase - k) * 0.3 * (k - 1) : 0;
       const tx = rx + fx * F, ty = ry + wig;
       let vx = c.px[k] - c.ox[k], vy = c.py[k] - c.oy[k];
@@ -741,6 +822,23 @@ export class Creatures {
 
     if (sp.hunts) prey = this.nearest(c, o => o.alive && o.kind === sp.hunts, 60);
     if (sp.chases) prey = this.nearest(c, o => o.alive && o.kind === sp.chases, 40);
+    if (sp.fears) {
+      const o = this.nearest(c, o => o.alive && o.kind === sp.fears, 14);
+      if (o) { fear = (fear || 0) + Math.sign(hx - o.px[o.sp.rootK]) * 2; prey = null; }
+    }
+    if (sp.hatesWater && STATE[this.cellType(c.px[k0], c.py[k0])] === LIQUID) fear = fear || (Math.random() < 0.5 ? 1 : -1);
+    // Sheep stop to nibble any leaves or grass by their head.
+    // A sheep facing leaves stops and nibbles them, a mouthful at a time.
+    if (sp.grazes && !fear) {
+      const w0 = this.world;
+      for (const [dx, dy] of [[0.8, 0], [1.4, -0.6], [0.8, -1], [0, -1.2], [1.6, 0.4], [2.2, -1], [2.2, -2], [1.6, -2.6], [2.6, 0]]) {
+        const i = this.cellIndex(hx + dx * c.facing, hy + dy);
+        if (i < 0 || w0.type[i] !== PLANT) continue;
+        if (c.biteT <= 0) { w0.set(i, EMPTY); w0.discover(DISC.GRAZE); c.biteT = 25; }
+        c.speed = 0; c.mood = 'idle'; c.moodT = 40 + Math.random() * 60;
+        return;
+      }
+    }
     if (c.kind === 'human') {
       const z = this.nearest(c, o => o.alive && o.kind === 'zombie', 18);
       if (z) fear = (fear || 0) + Math.sign(hx - z.px[z.sp.headK]) * 2;
@@ -888,7 +986,7 @@ export class Creatures {
       if (T < minT) minT = T;
       if (t === FIRE) inFire++;
       else if (t === LAVA || t === MOLTEN) inLava++;
-      else if (t === ACID) {
+      else if (t === ACID || t === LYE) {
         inAcid++;
         c.wound[k] += 0.03 * sp.acid;
         if (Math.random() < 0.01) w.set(i, SMOKE, T + 10);
@@ -927,6 +1025,8 @@ export class Creatures {
     // Frostbite, and a shock from a live wire.
     if (minT < -20 && c.kind !== 'robot') this.hurt(c, Math.min(0.15, (-20 - minT) * 0.0008), -1, 'cold');
     if ((c.age + c.id) % 2 === 0) this.shock(c);
+    if ((c.age + c.id) % 4 === 0) this.spines(c);
+    if ((c.age + c.id) % 10 === 0) this.radiation(c);
     if (inAcid) this.hurt(c, inAcid * 0.03 * sp.acid, -1, 'acid');
 
     // Breathing.
@@ -936,12 +1036,12 @@ export class Creatures {
       const buried = (HARD_CELL[ht] && !AIRY_SOLID[ht]) || this.buried(c);
       const ok = sp.breathes === 'water' ? ht === WATER || ht === BRINE
         : sp.breathes === 'both' ? !buried && (STATE[ht] !== LIQUID || ht === WATER || ht === BRINE)
-        : STATE[ht] !== LIQUID && !buried;
+        : STATE[ht] !== LIQUID && ht !== CO2 && !buried;
       if (ok) c.oxygen = Math.min(600, c.oxygen + 4);
       else {
         c.oxygen--;
         if (sp.breathes === 'water' && c.oxygen < 250) w.discover(DISC.GASP);
-        if (c.oxygen <= 0) this.hurt(c, 0.15, -1, sp.breathes === 'water' ? 'gasp' : buried ? 'buried' : 'drown');
+        if (c.oxygen <= 0) this.hurt(c, 0.15, -1, sp.breathes === 'water' ? 'gasp' : buried ? 'buried' : ht === CO2 ? 'suffocate' : 'drown');
       }
       const rt = this.cellType(c.px[sp.rootK], c.py[sp.rootK]);
       if (c.kind === 'human' && ok && rt === BRINE && !c.grounded && !c.swimming) w.discover(DISC.SALT_FLOAT);
@@ -981,6 +1081,28 @@ export class Creatures {
     }
   }
 
+  // Cactus spines prick anything brushing against them.
+  spines(c) {
+    for (let k = 0; k < c.n; k++) {
+      const x = c.px[k], y = c.py[k], r = c.r[k] + 0.35;
+      if (this.cellType(x + r, y) === CACTUS || this.cellType(x - r, y) === CACTUS || this.cellType(x, y - r) === CACTUS || this.cellType(x, y + r) === CACTUS) {
+        this.hurt(c, 0.6, k, 'spine', 2);
+        if (c.alive && c.mood !== 'flee') { c.facing = -c.facing; c.mood = 'flee'; c.moodT = 30; c.speed = c.sp.run; }
+        return;
+      }
+    }
+  }
+
+  // Radiation from uranium nearby: slow, invisible harm.
+  radiation(c) {
+    const w = this.world, k0 = c.sp.rootK;
+    const cx = Math.floor(c.px[k0]), cy = Math.floor(c.py[k0]);
+    let n = 0;
+    for (let y = Math.max(0, cy - 6); y <= Math.min(w.H - 1, cy + 6); y++)
+      for (let x = Math.max(0, cx - 6); x <= Math.min(w.W - 1, cx + 6); x++) if (w.type[x + w.W * y] === URANIUM) n++;
+    if (n) this.hurt(c, Math.min(1.5, n * 0.03), -1, 'radiation');
+  }
+
   // Head boxed in above and on both sides by powder or solid: buried alive.
   buried(c) {
     const h = c.sp.headK, x = c.px[h], y = c.py[h], R = c.r[h] + 0.6;
@@ -1003,7 +1125,7 @@ export class Creatures {
   // ----- damage -----
   // How a cause harms the body: cuts open wounds that bleed, blunt force
   // bruises and breaks.
-  static CUTS = { blast: 1, bite: 1, crush: 0.3, lightning: 0.3 };
+  static CUTS = { blast: 1, bite: 1, crush: 0.3, lightning: 0.3, spine: 0.6 };
   static BLUNT = { fall: 1, crush: 1, blast: 0.6, shock: 0.2 };
 
   // What a hit does to one body part: wounds, bruises, bleeding, a broken
@@ -1238,6 +1360,7 @@ export class Creatures {
       else if (c.sp.breathes && c.oxygen < 200) bits.push(c.sp.breathes === 'water' ? 'gasping' : 'out of breath');
       else if (c.infected) bits.push('bitten');
       else if (c.swimming) bits.push('swimming');
+      else if (c.sp.grazes && c.mood === 'idle' && c.speed === 0) bits.push('grazing');
       else if (c.mood === 'fly') bits.push('flying');
       else if (c.stun > 0 && !c.grab) bits.push('knocked out');
       else if (c.mood === 'flee' || c.mood === 'panic') bits.push('scared');

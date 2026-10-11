@@ -9,7 +9,10 @@ export const EMPTY = 0, STONE = 1, DIRT = 2, SAND = 3, SNOW = 4, ASH = 5,
   THERMITE = 25, MOLTEN = 26, RUST = 27, MERCURY = 28, HONEY = 29, FUSE = 30, CLONER = 31, DRAIN = 32,
   BLOOD = 33, BODY = 34, GRAVEL = 35, CEMENT = 36, CONCRETE = 37, NAPALM = 38, NITRO = 39, C4 = 40,
   NITROGEN = 41, SLIME = 42, WAX = 43, MOLTEN_WAX = 44, GOLD = 45, MOLTEN_GOLD = 46, FUNGUS = 47,
-  FIREWORK = 48, SPARKLE = 49, CLOUD = 50, BATTERY = 51, LAMP = 52, DRIED_BLOOD = 53;
+  FIREWORK = 48, SPARKLE = 49, CLOUD = 50, BATTERY = 51, LAMP = 52, DRIED_BLOOD = 53,
+  QUICKSAND = 54, URANIUM = 55, HYDROGEN = 56, CORN = 57, POPCORN = 58, DIAMOND = 59, TAR = 60, CACTUS = 61,
+  FLOWER = 62, BLOOM = 63, SPONGE = 64, RUBBER = 65, DRY_ICE = 66, CO2 = 67, LYE = 68, TORCH = 69,
+  BLACK_HOLE = 70, HEATER = 71, FREEZER = 72, HAIL = 73, METEOR = 74;
 
 export const SOLID = 1, POWDER = 2, LIQUID = 3, GAS = 4;
 
@@ -26,6 +29,8 @@ export const DISC = {
   DROWN: 34, ON_FIRE: 35, CRUSH: 36, INFECTION: 37, GASP: 38, SALT_FLOAT: 39,
   CONCRETE: 40, NAPALM: 41, NITRO: 42, C4: 43, CRYO: 44, CANDLE: 45, GOLD: 46, ROT: 47,
   FIREWORK: 48, RAIN_CLOUD: 49, ELECTRIC: 50, LAMP: 51, SHOCK: 52,
+  MELTDOWN: 53, HYDROGEN: 54, POPCORN: 55, DIAMOND: 56, NEUTRALIZE: 57, BOUNCE: 58, GRAZE: 59,
+  SUBLIME: 60, BLACK_HOLE: 61, BLOOM: 62, METEOR: 63,
 };
 
 export const DISCOVERIES = [
@@ -133,6 +138,28 @@ export const DISCOVERIES = [
     text: 'Current through a lamp heats its filament until it glows. It is brightest at night.' },
   { id: DISC.SHOCK, title: 'Electrocution', recipe: 'Creature + live wire', hint: 'What happens if someone touches a live wire?',
     text: 'Current through a body makes the muscles jump and hurts. Do not try this at home.' },
+  { id: DISC.MELTDOWN, title: 'Meltdown', recipe: 'A big pile of uranium', hint: 'Pile up a lot of uranium in one place.',
+    text: 'Uranium gives off heat as it decays. A small lump stays warm; pile enough together and the heat builds until it glows and melts everything around it.' },
+  { id: DISC.HYDROGEN, title: 'Hydrogen blast', recipe: 'Hydrogen + flame', hint: 'Light a cloud of hydrogen.',
+    text: 'Hydrogen is the lightest gas. It rises fast, and mixed with air even a small spark makes it explode.' },
+  { id: DISC.POPCORN, title: 'Popcorn', recipe: 'Corn + 180 °C', hint: 'Heat some corn.',
+    text: 'The water inside a corn kernel turns to steam and bursts the shell, puffing the starch up to many times its size.' },
+  { id: DISC.DIAMOND, title: 'Diamond', recipe: 'Coal + great heat, no air', hint: 'Coal that is very hot but cannot burn...',
+    text: 'Diamond is pure carbon, packed tight by great heat and pressure. It is the hardest thing there is, but it does burn in hot air.' },
+  { id: DISC.NEUTRALIZE, title: 'Neutralisation', recipe: 'Acid + lye', hint: 'What cancels out an acid?',
+    text: 'An acid and a base cancel each other out, making salt water and heat.' },
+  { id: DISC.BOUNCE, title: 'Trampoline', recipe: 'Creature + rubber', hint: 'Drop someone onto rubber.',
+    text: 'Rubber is elastic: it stores the energy of a fall and gives it back, so a landing on it bounces instead of hurting.' },
+  { id: DISC.GRAZE, title: 'Grazing', recipe: 'Sheep + plants', hint: 'Let a sheep near some grass and bushes.',
+    text: 'Sheep eat leaves and grass. A flock can strip a bush bare.' },
+  { id: DISC.SUBLIME, title: 'Sublimation', recipe: 'Dry ice + warmth', hint: 'Leave dry ice out in the warm.',
+    text: 'Dry ice is frozen carbon dioxide at -78 °C. It turns straight into gas without melting first. The gas is heavier than air, so it pools low, puts out fires, and you cannot breathe it.' },
+  { id: DISC.BLACK_HOLE, title: 'Event horizon', recipe: 'Black hole', hint: 'Put something near a black hole.',
+    text: 'Nothing that gets close enough to a black hole escapes. Things near it are stretched and swallowed.' },
+  { id: DISC.BLOOM, title: 'Blooming', recipe: 'Flower seed + soil', hint: 'Plant flower seeds in soil.',
+    text: 'A flower seed on soil sends up a stem and opens a bloom.' },
+  { id: DISC.METEOR, title: 'Impact', recipe: 'Meteor', hint: 'Call down a meteor.',
+    text: 'A meteor hits the ground at tens of kilometres per second, blasting out a crater and scattering molten rock.' },
 ];
 
 // Look up a discovery by its id (ids stay stable even if one is retired).
@@ -396,6 +423,98 @@ def(DRIED_BLOOD, { name: 'Dried blood', state: POWDER, density: 1300, k: 0.08, c
   desc: 'Old blood, dried into a dark crust.',
   c2: ['#4a1210', '#5a1712', '#3e0f0d', '#64201a'] });
 
+def(QUICKSAND, { name: 'Quicksand', cat: 'liquid', state: LIQUID, density: 1900, k: 0.08, c: 1.2, flow: 1, visc: 0.04, hard: 0.6,
+  desc: 'Wet sand that flows like very thick mud. Creatures sink in and get stuck.',
+  c2: ['#c7a96c', '#b8995c', '#d4b87c', '#a98a50'] });
+
+def(URANIUM, { name: 'Uranium', cat: 'solid', state: SOLID, density: 19000, k: 0.15, c: 0.12, hard: 0.2,
+  hot: [1132, LAVA, DISC.MELTDOWN], latent: [120, 0], glow: false,
+  desc: 'Radioactive metal. It warms itself as it decays; a big pile gets dangerously hot. Its radiation slowly hurts creatures nearby.',
+  c2: ['#4a6a3a', '#567a42', '#3e5a30', '#6a8c4a'] });
+
+def(HYDROGEN, { name: 'Hydrogen', cat: 'gas', state: GAS, density: 0.09, k: 0.18, c: 0.4, life: [1200, 2400], rise: 0.95, hard: 0,
+  ignite: 500,
+  desc: 'The lightest gas. Rises fast and explodes when it meets a flame.',
+  c2: ['#e8f4ff', '#dcecfa', '#f2f8ff', '#d0e4f4'] });
+
+def(CORN, { name: 'Corn', cat: 'powder', state: POWDER, density: 750, k: 0.05, c: 1.0, slide: 0.6, hard: 1,
+  hot: [180, POPCORN, DISC.POPCORN],
+  desc: 'Corn kernels. Heat them to 180 °C and they pop.',
+  c2: ['#f2c43a', '#e8b32a', '#f8d45a', '#d89e1e'] });
+
+def(POPCORN, { name: 'Popcorn', cat: 'powder', state: POWDER, density: 60, k: 0.03, c: 1.0, slide: 0.5, hard: 1,
+  ignite: 300, burn: [30, 600, 0.6],
+  desc: 'Light, fluffy and edible. Burns if it gets too hot.',
+  c2: ['#fbf4dc', '#f4ead0', '#fffaea', '#ecd9a8'] });
+
+def(DIAMOND, { name: 'Diamond', cat: 'solid', state: SOLID, density: 3500, k: 0.3, c: 0.5, acidProof: true,
+  ignite: 900, burn: [200, 1100, 0],
+  desc: 'Pure carbon, the hardest thing there is. Acid cannot touch it, but it burns in hot air.',
+  c2: ['#d8f8ff', '#b8eef8', '#f0fdff', '#9ee0ee'] });
+
+def(TAR, { name: 'Tar', cat: 'liquid', state: LIQUID, density: 1150, k: 0.04, c: 0.9, flow: 1, visc: 0.05, hard: 0.7,
+  ignite: 320, burn: [380, 900, 0],
+  desc: 'Black and sticky. Barely flows, traps whatever walks into it, and burns with thick smoke.',
+  c2: ['#1e1a18', '#262120', '#161312', '#2e2826'] });
+
+def(CACTUS, { name: 'Cactus', cat: 'life', state: SOLID, density: 700, k: 0.05, c: 1.2, life: [6, 11], hard: 0.8,
+  ignite: 400, burn: [60, 600, 0.3],
+  desc: 'Grows tall on sand without needing much water. Its spines hurt anything that touches it.',
+  c2: ['#4e8a3a', '#5a9a44', '#447a32', '#3a6a2a'] });
+
+def(FLOWER, { name: 'Flower seeds', cat: 'life', state: POWDER, density: 900, k: 0.05, c: 0.8, slide: 0.5, hard: 1,
+  desc: 'Scatter on soil and they grow into flowers.',
+  c2: ['#6a4a2a', '#7a5a34', '#5a3e22', '#8a6a3e'] });
+
+def(BLOOM, { name: 'Flower', state: SOLID, density: 300, k: 0.05, c: 1.0, ignite: 250, burn: [15, 600, 0.3], hard: 1,
+  c2: ['#e84a6a', '#f2c43a', '#a86ae8', '#f08a3a', '#f4f0ff', '#4aa8e8'] });
+
+def(SPONGE, { name: 'Sponge', cat: 'solid', state: SOLID, density: 300, k: 0.03, c: 1.0, hard: 0.9, ignite: 350, burn: [40, 600, 0.3],
+  desc: 'Soaks up water around it until it is full. Heat dries it out again.',
+  c2: ['#f0d85a', '#e8cc48', '#f6e278', '#d8b838'] });
+
+def(RUBBER, { name: 'Rubber', cat: 'solid', state: SOLID, density: 1100, k: 0.02, c: 1.4, hard: 0.5, ignite: 330, burn: [120, 700, 0.2],
+  desc: 'Bouncy. Creatures that land on it spring back up instead of getting hurt. Does not carry electricity.',
+  c2: ['#3a3a42', '#444450', '#30303a', '#c84a4a'] });
+
+def(DRY_ICE, { name: 'Dry ice', cat: 'solid', state: SOLID, density: 1560, k: 0.1, c: 0.85, temp: -78, hard: 0.9,
+  hot: [-78, CO2, DISC.SUBLIME], latent: [90, 0],
+  desc: 'Frozen carbon dioxide at -78 °C. Turns straight into gas as it warms, making a cold fog that sinks.',
+  c2: ['#e8f0f4', '#dce6ec', '#f4f8fa', '#cfdbe2'] });
+
+def(CO2, { name: 'Carbon dioxide', cat: 'gas', state: GAS, density: 1.98, k: 0.02, c: 0.8, life: [700, 1400], hard: 0,
+  desc: 'Heavier than air, so it sinks and pools in low places. Puts out fires, and nothing can breathe it.',
+  c2: ['#d8e2e8', '#cdd8de', '#e2eaee', '#c2ced6'] });
+
+def(LYE, { name: 'Lye', cat: 'liquid', state: LIQUID, density: 1150, k: 0.12, c: 1.2, flow: 4, visc: 1, hard: 0,
+  desc: 'A strong base. Mixed with acid it makes salt water and heat. Stings like acid.',
+  c2: ['#c8d0f0', '#bcc6ea', '#d4dcf6', '#aeb8e0'] });
+
+def(TORCH, { name: 'Torch', cat: 'machine', state: SOLID, density: 99999, k: 0.0, c: 9, acidProof: true,
+  desc: 'Burns forever with a steady flame. Good for lighting things, and for lighting up the night.',
+  c2: ['#6a4a2a', '#5a3e22', '#7a5634', '#ffb636'] });
+
+def(BLACK_HOLE, { name: 'Black hole', cat: 'machine', state: SOLID, density: 99999, k: 0.0, c: 9, acidProof: true,
+  desc: 'Pulls in everything nearby and swallows it, creatures included.',
+  c2: ['#050308', '#0a0612', '#000000', '#3a1e6a'] });
+
+def(HEATER, { name: 'Heater', cat: 'machine', state: SOLID, density: 99999, k: 0.3, c: 9, temp: 400, acidProof: true,
+  desc: 'Stays at 400 °C, warming everything it touches.',
+  c2: ['#8a3a2a', '#a8442e', '#7a3224', '#ff8a4a'] });
+
+def(FREEZER, { name: 'Freezer', cat: 'machine', state: SOLID, density: 99999, k: 0.3, c: 9, temp: -80, acidProof: true,
+  desc: 'Stays at -80 °C, chilling and freezing everything it touches.',
+  c2: ['#2a4a6a', '#30587a', '#24405e', '#8ad8ff'] });
+
+def(HAIL, { name: 'Hail', cat: 'powder', state: POWDER, density: 900, k: 0.16, c: 2.1, slide: 0.7, temp: -5, hard: 0.8,
+  hot: [0, WATER, DISC.MELT], latent: [40, 0],
+  desc: 'Balls of ice. They hurt when they land on someone, and melt in the warm.',
+  c2: ['#eef8fc', '#dceef6', '#ffffff', '#c8e2ee'] });
+
+// A meteor: a rock glowing from its fall through the air. Blasts a crater where it lands.
+def(METEOR, { name: 'Meteor', state: POWDER, density: 3500, k: 0.1, c: 0.8, temp: 1500, slide: 0.2, hard: 0.2, glow: true,
+  c2: ['#ffcf6a', '#ff8a2a', '#ffe8a8', '#e8561e'] });
+
 export const COUNT = DEFS.length;
 export const ELEMENTS = DEFS;
 
@@ -453,13 +572,13 @@ for (let t = 0; t < COUNT; t++) {
 
 // Order of the buttons in the element palette.
 export const PALETTE = [
-  { cat: 'Powders', items: [SAND, DIRT, SNOW, GRAVEL, ASH, OBSIDIAN, SALT, MUD, THERMITE, RUST] },
-  { cat: 'Liquids', items: [WATER, OIL, LAVA, ACID, BRINE, MERCURY, HONEY, MOLTEN, CEMENT, NAPALM, NITROGEN, SLIME] },
-  { cat: 'Gases', items: [FIRE, SMOKE, CLOUD] },
-  { cat: 'Solids', items: [STONE, WOOD, ICE, METAL, GLASS, BRICK, COAL, FUSE, CONCRETE, WAX, GOLD] },
+  { cat: 'Powders', items: [SAND, DIRT, SNOW, GRAVEL, ASH, OBSIDIAN, SALT, MUD, THERMITE, RUST, CORN, HAIL] },
+  { cat: 'Liquids', items: [WATER, OIL, LAVA, ACID, BRINE, MERCURY, HONEY, MOLTEN, CEMENT, NAPALM, NITROGEN, SLIME, QUICKSAND, TAR, LYE] },
+  { cat: 'Gases', items: [FIRE, SMOKE, CLOUD, HYDROGEN, CO2] },
+  { cat: 'Solids', items: [STONE, WOOD, ICE, METAL, GLASS, BRICK, COAL, FUSE, CONCRETE, WAX, GOLD, DIAMOND, URANIUM, RUBBER, SPONGE, DRY_ICE] },
   { cat: 'Explosives', items: [GUNPOWDER, NITRO, C4, FIREWORK] },
-  { cat: 'Life', items: [PLANT, SEED, FUNGUS] },
-  { cat: 'Machines', items: [CLONER, DRAIN, BATTERY, LAMP] },
+  { cat: 'Life', items: [PLANT, SEED, FUNGUS, CACTUS, FLOWER] },
+  { cat: 'Machines', items: [CLONER, DRAIN, BATTERY, LAMP, TORCH, HEATER, FREEZER, BLACK_HOLE] },
 ];
 
 export function hexToRgb(hex) {

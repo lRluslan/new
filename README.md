@@ -12,8 +12,8 @@ world is made to match the shape and size of your screen (about 5 screen
 pixels per cell). Reset or Clear fits it again if you have resized the window.
 Zoom in with the scroll wheel or a pinch to see the details.
 
-There are 52 reactions to discover, such as obsidian, boiling, glassmaking, brickmaking, charcoal,
-thermite, casting, rust, lightning, explosions, concrete, fireworks, electricity, drowning and zombie infection. The **Discoveries** button in the top right keeps track of them.
+There are 63 reactions to discover, such as obsidian, boiling, glassmaking, brickmaking, charcoal,
+thermite, casting, rust, lightning, explosions, concrete, fireworks, electricity, popcorn, diamonds, meltdowns, drowning and zombie infection. The **Discoveries** button in the top right keeps track of them.
 
 ### Creatures
 
@@ -28,6 +28,8 @@ The **Creatures** group in the palette has five kinds of little ragdoll creature
 | **Dog** | Trots about on four legs and loves chasing chickens (it only plays). Paddles when it falls in water. |
 | **Bird** | Perches, then flies about at a cruising height. Takes off at the first sign of danger and glides down gently. |
 | **Frog** | Hops along and swims. Breathes air or water, so it never drowns, but its skin is sensitive to acid. |
+| **Cat** | Quick and nimble. Hunts birds, always lands on its feet (falls barely hurt), runs from dogs and hates water. |
+| **Sheep** | Grazes on grass, leaves and bushes, a mouthful at a time, and runs from dogs. Its wool catches fire very easily. |
 | **Fish** | Swims in water. On land it flops about and soon suffocates. |
 
 Pick one and click to drop it in. With a creature or the **Grab** tool (`G`) selected, click and drag a creature to pick
@@ -148,7 +150,7 @@ GitHub Pages is free for public projects. For a private project it needs a paid 
 | Creatures | Pick one and click to drop it in. Drag one to carry or throw it | The same, with one finger |
 
 Keys:
-- `1` to `0` pick elements. `E` is the eraser, `H` heat, `J` cool, `G` grab, `B` bomb, `L` lightning, `W` wind.
+- `1` to `0` pick elements. `E` is the eraser, `H` heat, `J` cool, `G` grab, `B` bomb, `L` lightning, `W` wind, `N` line, `F` fill, `M` meteor.
 - `Space` pauses, `.` moves one step forward.
 - `R` resets the world and `C` clears it.
 - `T` turns on the thermal camera. The **View** button zooms back out to the whole world.
@@ -216,6 +218,32 @@ on fire and fuses sand into glass where it hits.
 
 New tools: **Bomb** (`B`, click for an explosion; a bigger brush makes a bigger blast), **Lightning** (`L`, click to
 call down a bolt) and **Wind** (`W`, hold to blow sand, water, smoke, fire and creatures away from the pointer).
+
+**Even more:**
+
+| | |
+|---|---|
+| **Quicksand** | Wet sand that flows like very thick mud. Creatures sink to the waist and can barely move. |
+| **Tar** | Black and sticky. Traps whatever walks into it, and burns with thick smoke. |
+| **Lye** | A strong base. Mixed with acid it makes salt water and heat (neutralisation). |
+| **Hydrogen** | The lightest gas. Rises fast and explodes in a chain when it meets a flame. |
+| **Carbon dioxide** | Heavier than air, so it sinks and pools. Puts out fires, and nothing can breathe it. |
+| **Dry ice** | Frozen carbon dioxide at -78 °C that turns straight into a cold, sinking fog. |
+| **Corn** | Heat it to 180 °C and it pops into popcorn, puffing up and jumping. |
+| **Hail** | Balls of ice that sting when they land on someone. |
+| **Diamond** | The hardest thing there is; acid cannot touch it, but it burns in hot air. Coal heated past 1500 °C with no air to burn in turns into diamond. |
+| **Uranium** | Warms itself as it decays. A small lump stays cool, a big pile heats up until it melts down. Its radiation slowly harms creatures nearby. |
+| **Rubber** | Bouncy: creatures that land on it spring back up unhurt. Does not carry electricity. |
+| **Sponge** | Soaks up water, salt water, oil and blood until it is full. Heat dries it out. |
+| **Cactus** | Grows tall on sand, sometimes with arms. Its spines prick anything that brushes against it. |
+| **Flower seeds** | Scatter them on soil and they grow into flowers of many colours. |
+| **Torch** | Burns for ever with a steady flame (unless it is under water). |
+| **Heater / Freezer** | Stay at 400 °C / -80 °C, warming or freezing everything they touch. |
+| **Black hole** | Pulls in everything nearby, matter and creatures alike, and swallows it. |
+
+New tools: **Line** (`N`, drag to draw a straight line of the last element you picked), **Fill** (`F`, click to fill
+a space like a paint bucket) and **Meteor** (`M`, click to call down a meteor that blasts a crater of molten rock).
+New weather: **Hail** and **Acid rain**. **Clear** now leaves a thicker stone floor, so it shows above the toolbar.
 
 **Day and night:** the moon button at the bottom switches between Day, Night, and Day & night (a full day every four
 minutes). At night the sky fills with stars, fireflies come out, and anything glowing (fire, lava, lamps, live
