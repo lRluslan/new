@@ -15,7 +15,7 @@ const {
   ICE, GLASS, SEED, SALT, BRINE, MUD, BRICK, COAL, MOLTEN, MERCURY, HONEY, FUSE, CLONER, DRAIN, STATE, GAS, GLOWS,
   METAL, GOLD, MOLTEN_GOLD, LAMP, BATTERY, SPARKLE, CLOUD, NITROGEN, CEMENT, CONCRETE, SLIME, FUNGUS, NAPALM,
   FIREWORK, WAX, MOLTEN_WAX, GRAVEL, NITRO, C4, LIQUID, BLOOD, DRIED_BLOOD, URANIUM, HYDROGEN, CO2, DRY_ICE, POPCORN,
-  DIAMOND, TAR, CACTUS, BLOOM, SPONGE, TORCH, BLACK_HOLE, HEATER, FREEZER, HAIL, QUICKSAND, METEOR,
+  DIAMOND, TAR, CACTUS, BLOOM, SPONGE, TORCH, BLACK_HOLE, HEATER, FREEZER, HAIL, QUICKSAND, METEOR, STEAM,
 } = El;
 const SPARK = 32, ZAPPED = 64; // wire flags (see world.js)
 
@@ -53,6 +53,10 @@ const MERCURY_HI = packHex('#f4f8fa'), HONEY_D = ['#f6c45a', '#e8a93a', '#d9952a
 const CLONER_FRAME = packHex('#5b6270'), DRAIN_CORE = packHex('#05040a'), DRAIN_RIM = packHex('#4a3a78');
 const LEAF_COLORS = ['#8ccf4e', '#6ab944', '#b4e264', '#4f9e3c', '#d2ec7a'].map(packHex);
 const MOTE = packHex('#fffbd2');
+const STEAM_C = packHex('#f8fdfc'), STEAM_SHADE = packHex('#c4d8d8');
+// A soft 5×5 blob for drawing steam.
+const STEAM_KERNEL = (() => { const k = []; for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) k.push(Math.exp(-(dx * dx + dy * dy) / 2.2)); return k; })();
+const GRAB_C = packHex('#fff4c8'), SHARD_C = packHex('#e8fbff');
 // The inside of a hut: plank back wall and a window that glows at night.
 const HUT_WALL = ['#5a3e2a', '#4e3424'].map(packHex), HUT_SEAM = packHex('#3a2818');
 const WINDOW_DAY = packHex('#9fc8c0'), WINDOW_NIGHT = packHex('#ffd27a'), WINDOW_FRAME = packHex('#6e4a32');
@@ -493,6 +497,8 @@ export class Renderer2D {
     }
 
     const tick = (time * 6) | 0;
+    const steamAt = this.steamAt || (this.steamAt = new Int32Array(20000));
+    let steamN = 0;
     for (let y = 0; y < H; y++) {
       const row = (H - 1 - y) * W;
       for (let x = 0; x < W; x++) {
@@ -679,6 +685,11 @@ export class Renderer2D {
             if ((sh & 7) === 0) { c = RAD_GLOW; gbuf[p] = scale(RAD_GLOW, 0.5); }
             break;
           case HYDROGEN: c = blend(sky[p], PAL[HYDROGEN][sh & 3], 0.22); break;
+          case STEAM:
+            // Drawn afterwards as a soft cloud (see below).
+            c = buf[p];
+            if (steamN < steamAt.length) steamAt[steamN++] = p;
+            break;
           case CO2: c = blend(sky[p], PAL[CO2][sh & 3], 0.3 + (sh & 3) * 0.04); break;
           case DRY_ICE: if (exposed && run === 0) c = WHITE; break;
           case POPCORN: if ((sh & 3) === 0) c = scale(c, 0.9); break;
@@ -728,6 +739,40 @@ export class Renderer2D {
         else if (t === ACID && (sh & 7) === 0) gbuf[p] = scale(c, 0.6);
         if (thermalView) c = blend(c, thermal(T), 0.82);
         buf[p] = c;
+      }
+    }
+    // Steam as a soft cloud: every steam cell adds a blurred blob of
+    // density around itself, and the open air is painted from that, faint
+    // and bluish where thin, bright white where thick, with a slow swirl
+    // rising through it. Only cells near steam are touched.
+    if (steamN && !thermalView) {
+      const dens = this.steamDens && this.steamDens.length === buf.length ? this.steamDens : (this.steamDens = new Float32Array(buf.length));
+      const touched = this.steamTouched && this.steamTouched.length >= steamN * 25 ? this.steamTouched : (this.steamTouched = new Int32Array(Math.max(steamN * 25, 4096)));
+      let nt = 0;
+      for (let k = 0; k < steamN; k++) {
+        const p = steamAt[k], px = p % W, row = (p / W) | 0;
+        for (let dy = -2; dy <= 2; dy++) {
+          const r = row + dy;
+          if (r < 0 || r >= H) continue;
+          for (let dx = -2; dx <= 2; dx++) {
+            const x = px + dx;
+            if (x < 0 || x >= W) continue;
+            const q = r * W + x;
+            if (dens[q] === 0) touched[nt++] = q;
+            dens[q] += STEAM_KERNEL[(dy + 2) * 5 + dx + 2];
+          }
+        }
+      }
+      for (let k = 0; k < nt; k++) {
+        const q = touched[k], d = dens[q];
+        dens[q] = 0;
+        const x = q % W, row = (q / W) | 0, t = type[x + W * (H - 1 - row)];
+        if (t !== EMPTY && STATE[t] !== GAS) continue;
+        const swirl = vnoise(x * 0.22 + time * 0.4, row * 0.2 + time * 1.3);
+        const v = d * (0.7 + 0.6 * swirl);
+        const a = Math.min(0.9, v * 0.32);
+        if (a < 0.04) continue;
+        buf[q] = blend(buf[q], blend(STEAM_SHADE, STEAM_C, Math.min(1, v / 2.2)), a);
       }
     }
     // Huts: fill the open inside with a plank back wall and a window.
@@ -816,6 +861,9 @@ export class Renderer2D {
       } else if (e.k === 'crumb') {
         const c = PAL[e.t] ? PAL[e.t][1] : CHIP_C[0];
         for (let k = 0; k < 2; k++) this.addPart(e.x, e.y, (Math.random() - 0.5) * 5, 2 + Math.random() * 4, 0.45, c, 1, false);
+      } else if (e.k === 'shatter') {
+        this.shake = Math.max(this.shake, 2);
+        for (let k = 0; k < 8; k++) this.addPart(e.x, e.y, (Math.random() - 0.5) * 16, Math.random() * 12, 0.6 + Math.random() * 0.4, k & 1 ? SHARD_C : (PAL[e.t] ? PAL[e.t][0] : SHARD_C), 1, true);
       } else if (e.k === 'sip') this.addPart(e.x, e.y + 0.6, (Math.random() - 0.5) * 3, 2.5, 0.3, WATER_D[0], 1, false);
       else if (e.k === 'knock') {
         for (let k = 0; k < 2; k++) this.addPart(e.x, e.y, (Math.random() - 0.5) * 6, Math.random() * 3, 0.35, DUST_C, 2, false);
@@ -944,6 +992,11 @@ export class Renderer2D {
       if (q.x < x0) x0 = q.x - 1; if (q.x > x1) x1 = q.x + 1;
       if (q.y < y0) y0 = q.y - 1; if (q.y > y1) y1 = q.y + 1;
     }
+    const gl = this.grabLine;
+    if (gl) {
+      x0 = Math.min(x0, gl.x0 - 1, gl.x1 - 1); x1 = Math.max(x1, gl.x0 + 1, gl.x1 + 1);
+      y0 = Math.min(y0, gl.y0 - 1, gl.y1 - 1); y1 = Math.max(y1, gl.y0 + 1, gl.y1 + 1);
+    }
     const box = x1 < x0 ? null : [Math.max(0, Math.floor(x0 * MOB_S)), Math.max(0, Math.floor((H - y1) * MOB_S)),
       Math.min(BW, Math.ceil(x1 * MOB_S)), Math.min(BH, Math.ceil((H - y0) * MOB_S))];
     const old = this.mobBox;
@@ -971,7 +1024,27 @@ export class Renderer2D {
     const o = { buf: this.mbuf, BW, BH, S: MOB_S, x0: 0, y0: H, gore: cr.gore, tick: Math.floor(time * 12), tint, marks: true, underwater };
     for (const c of near) drawCreature(c, o);
     this.drawParts(this.mbuf, BW, BH);
+    this.drawGrab(this.mbuf, BW, BH);
     flush();
+  }
+
+  // While a creature is held: a dotted line from the grip to the pointer,
+  // and a small ring around the grip.
+  drawGrab(buf, BW, BH) {
+    const gl = this.grabLine;
+    if (!gl) return;
+    const H = this.world.H, S = MOB_S;
+    const ax = gl.x0 * S, ay = (H - gl.y0) * S, bx = gl.x1 * S, by = (H - gl.y1) * S;
+    const n = Math.max(1, Math.ceil(Math.hypot(bx - ax, by - ay)));
+    for (let k = 0; k <= n; k++) {
+      if ((k >> 1) % 2) continue;
+      const x = Math.round(ax + (bx - ax) * k / n), y = Math.round(ay + (by - ay) * k / n);
+      if (x >= 0 && y >= 0 && x < BW && y < BH) buf[y * BW + x] = GRAB_C;
+    }
+    for (let a = 0; a < 16; a++) {
+      const x = Math.round(ax + Math.cos(a * Math.PI / 8) * 3), y = Math.round(ay + Math.sin(a * Math.PI / 8) * 3);
+      if (x >= 0 && y >= 0 && x < BW && y < BH) buf[y * BW + x] = GRAB_C;
+    }
   }
 
   drawCursor() {

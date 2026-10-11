@@ -13,7 +13,7 @@ import {
   FIRE, WOOD, PLANT, OBSIDIAN, ASH, ICE, SNOW, SALT, BRINE, MUD, COAL,
   METAL, RUST, MERCURY, FUSE, THERMITE, CLONER, DRAIN, GLASS, BODY, BLOOD, GOLD, CEMENT, CONCRETE, NAPALM, NITRO, C4,
   WAX, MOLTEN_WAX, FUNGUS, FIREWORK, SPARKLE, CLOUD, BATTERY, LAMP, DRIED_BLOOD, URANIUM, HYDROGEN, CORN, POPCORN,
-  DIAMOND, CACTUS, FLOWER, BLOOM, SPONGE, DRY_ICE, CO2, LYE, TORCH, BLACK_HOLE, HEATER, FREEZER, METEOR, HONEY, COUNT, SOLID, POWDER, LIQUID, GAS, AMBIENT, FIRE_TEMP, DISC,
+  DIAMOND, CACTUS, FLOWER, BLOOM, SPONGE, DRY_ICE, CO2, LYE, TORCH, BLACK_HOLE, HEATER, FREEZER, METEOR, HONEY, STEAM, COUNT, SOLID, POWDER, LIQUID, GAS, AMBIENT, FIRE_TEMP, DISC,
   STATE, DENS, K, CAP, TEMP0, HOT_AT, HOT_TO, HOT_DISC, COLD_AT, COLD_TO, COLD_DISC, LATENT_HOT, LATENT_COLD,
   IGNITE, BURN_TIME, BURN_HEAT, ASH_CHANCE, BURN_TO, OWN_OXYGEN, FLOW, VISC, RISE, LIFE_MIN, LIFE_SPAN, SLIDE,
   HARD, GLOWS,
@@ -82,6 +82,8 @@ for (let t = 1; t < COUNT; t++) {
   CAN_SLEEP[t] = BLOCKS[t] && !BUSY[t] ? 1 : 0;
   WAKE_T[t] = Math.min(IGNITE[t] || Infinity, GLOWS[t] ? Infinity : 525);
 }
+// Warm water steams and warm mud dries, so they must not doze off while warm.
+WAKE_T[WATER] = 50; WAKE_T[MUD] = 60;
 
 export class World {
   constructor(W, H) {
@@ -358,7 +360,11 @@ export class World {
         const p = this.latent[i] + (T - HOT_AT[t]);
         this.temp[i] = HOT_AT[t];
         // Once melted (or boiled), heat beyond what the change needed stays in it.
-        if (p >= lat) { this.morph(i, HOT_TO[t]); this.temp[i] = HOT_AT[t] + Math.min(p - lat, 400); this.discover(HOT_DISC[t]); return; }
+        if (p >= lat) {
+          this.morph(i, HOT_TO[t]); this.temp[i] = HOT_AT[t] + Math.min(p - lat, 400); this.discover(HOT_DISC[t]);
+          if (t === BRINE) this.vent(i, x, y, this.temp[i]); // the water leaves as steam, the salt stays
+          return;
+        }
         this.latent[i] = p;
       } else if (Math.random() < 0.25) {
         this.morph(i, HOT_TO[t]);
@@ -402,6 +408,11 @@ export class World {
     switch (s) {
       case POWDER: {
         if (t === SALT && this.salt(i, x, y)) return;
+        if (t === ASH && this.ashLye(i, x, y)) return;
+        // Warm mud dries out into soil, giving off steam.
+        if (t === MUD && T > 60 && Math.random() < (T - 60) * 0.0004) {
+          this.morph(i, DIRT); this.vent(i, x, y, Math.max(100, T)); this.discover(DISC.DRY); return;
+        }
         if (t === METEOR) this.meteorTrail(i, x, y);
         const j = this.movePowder(i, t, x, y);
         if (t === SEED && j === i) this.sprout(i, x, y);
@@ -409,6 +420,11 @@ export class World {
         break;
       }
       case LIQUID:
+        if (t === LAVA && Math.random() < 0.5 && this.quench(i, x, y)) return;
+        // Warm water slowly steams away from its surface (boiling is faster).
+        if (t === WATER && T > 50 && y < this.H - 1 && this.type[i + this.W] === EMPTY && Math.random() < (T - 50) * 0.0004) {
+          this.morph(i, STEAM); this.discover(DISC.BOIL); return;
+        }
         if (t === ACID && this.corrode(i, x, y)) return;
         if (t === LYE && this.neutralize(i, x, y)) return;
         // Cement sets into concrete after a while, wherever it is.
@@ -423,6 +439,7 @@ export class World {
       case GAS:
         if (t === SPARKLE) this.sparkle(i, x, y);
         else if (t === CLOUD) this.cloud(i, x, y);
+        else if (t === STEAM) { if (!this.steam(i, x, y)) this.updateGas(i, t, x, y); }
         else this.updateGas(i, t, x, y);
         break;
       case SOLID:
@@ -452,12 +469,8 @@ export class World {
 
   cool(i, t, x, y) {
     if (t === LAVA) {
-      // Water quenches lava straight into volcanic glass.
-      if (this.hasNeighbor(i, x, y, WATER)) {
-        this.morph(i, OBSIDIAN);
-        this.discover(DISC.OBSIDIAN);
-        return true;
-      }
+      // Water quenches it: stone and a burst of steam (see quench()).
+      if (this.hasNeighbor(i, x, y, WATER) && this.quench(i, x, y)) return true;
       // Otherwise lava only sets on top of something solid, so a pool turns
       // to stone from the bottom up, one layer at a time. Until then it stays
       // molten even where its surface has cooled.
@@ -585,6 +598,11 @@ export class World {
       }
       return this.spread(i, t, x, y); // stays awake while it has metal to work on
     }
+    // Water running into ash soaks out its lye.
+    if (t === WATER && Math.random() < 0.05 && this.hasNeighbor(i, x, y, ASH)) {
+      const n = this.randomNeighbor(i, x, y);
+      if (n >= 0 && this.type[n] === ASH) { this.set(n, EMPTY, this.temp[n]); this.morph(i, LYE); this.discover(DISC.LYE_ASH); return i; }
+    }
     const s = this.spread(i, t, x, y);
     // Standing water slowly soaks into bare soil underneath, turning it to mud.
     if (s === i && t === WATER && y > 0 && this.type[i - this.W] === DIRT && Math.random() < 0.1) {
@@ -605,6 +623,11 @@ export class World {
     const W = this.W, ty = this.type;
     if (y === 0) { this.vy[i] = 0; return -1; }
     const below = ty[i - W];
+    // Sand stirred into water turns to mud as it sinks.
+    if (t === SAND && below === WATER && Math.random() < 0.06) {
+      this.morph(i, MUD); this.discover(DISC.SAND_MUD);
+      t = MUD;
+    }
     if (!this.canEnter(t, below)) {
       if (below === BODY && STATE[t] === POWDER && this.vy[i] < -2) this.hits.push(i - W, -this.vy[i] * DENS[t]);
       if (below === MERCURY && t !== MERCURY && this.vy[i] < -0.5) this.discover(DISC.MERCURY_FLOAT);
@@ -635,11 +658,11 @@ export class World {
     if (n > 0 && cy > 0 && ty[cur - W] === MERCURY && t !== MERCURY) this.discover(DISC.MERCURY_FLOAT);
     // A falling grain that lands on a creature hits it.
     if (n > 0 && cy > 0 && ty[cur - W] === BODY && STATE[t] === POWDER && v < -2) this.hits.push(cur - W, -v * DENS[t]);
-    // Water landing on bare soil soaks in and turns it to mud.
-    if (n > 0 && cy > 0 && t === WATER && ty[cur - W] === DIRT && Math.random() < 0.6) {
+    // Water landing on bare soil (or dry sand) soaks in and turns it to mud.
+    if (n > 0 && cy > 0 && t === WATER && (ty[cur - W] === DIRT || (ty[cur - W] === SAND && Math.random() < 0.4)) && Math.random() < 0.6) {
+      this.discover(ty[cur - W] === SAND ? DISC.SAND_MUD : DISC.MUD);
       this.morph(cur - W, MUD);
       this.set(cur, EMPTY);
-      this.discover(DISC.MUD);
       return cur;
     }
     // A meteor blasts a crater where it lands.
@@ -698,11 +721,12 @@ export class World {
       const go = drop ? Math.min(drop, steps) : (pressed && open ? 1 : 0);
       if (go) {
         const target = i + dx * go;
-        // Water flowing over bare soil soaks into it.
-        if (t === WATER && y > 0 && type[target - W] === DIRT && Math.random() < 0.15) {
+        // Water flowing over bare soil (or dry sand) soaks into it.
+        const under = y > 0 ? type[target - W] : EMPTY;
+        if (t === WATER && ((under === DIRT && Math.random() < 0.15) || (under === SAND && Math.random() < 0.05))) {
           this.morph(target - W, MUD);
           this.set(i, EMPTY, this.temp[i]);
-          this.discover(DISC.MUD);
+          this.discover(under === SAND ? DISC.SAND_MUD : DISC.MUD);
           return i;
         }
         this.swap(i, target);
@@ -755,8 +779,8 @@ export class World {
       if (this.temp[i] < FIRE_TEMP) this.temp[i] = FIRE_TEMP;
       if (this.hasNeighbor(i, x, y, CO2) && Math.random() < 0.6) { this.set(i, EMPTY, this.temp[i] * 0.5); this.discover(DISC.EXTINGUISH); return; }
       if (this.hasNeighbor(i, x, y, WATER) && Math.random() < 0.5) {
-        // The flame dies and its heat goes into the water.
-        this.set(i, EMPTY, 100);
+        // The flame dies in a puff of steam and its heat goes into the water.
+        this.set(i, STEAM, 105);
         const n = this.randomNeighbor(i, x, y);
         if (n >= 0 && type[n] === WATER) this.temp[n] += 8;
         this.discover(DISC.EXTINGUISH);
@@ -808,14 +832,110 @@ export class World {
   }
 
   // ----- chemistry and life -----
+  // Put a puff of steam into an open cell next to i (above if it can).
+  vent(i, x, y, T) {
+    const { W, H, type } = this;
+    const cand = [y < H - 1 ? i + W : -1, x > 0 ? i - 1 : -1, x < W - 1 ? i + 1 : -1, y < H - 1 && x > 0 ? i + W - 1 : -1, y < H - 1 && x < W - 1 ? i + W + 1 : -1];
+    for (const j of cand) if (j >= 0 && type[j] === EMPTY) { this.set(j, STEAM, Math.max(100, T)); return true; }
+    return false;
+  }
+
+  // Steam cools toward the air, and condenses when it is cool enough or
+  // touches something cold: into drops of water, or into rain clouds where
+  // a lot of it has gathered high up. Returns true if it is gone.
+  steam(i, x, y) {
+    const { H, type, temp } = this;
+    let T = temp[i];
+    T += (AMBIENT - T) * 0.0025;
+    temp[i] = T;
+    let cold = false;
+    if (Math.random() < 0.25) {
+      const n = this.randomNeighbor(i, x, y);
+      if (n >= 0) {
+        const o = type[n];
+        if (o === ICE || o === SNOW) {
+          cold = true;
+          if (Math.random() < 0.15) { this.morph(n, WATER); temp[n] = 1; this.discover(DISC.THAW); }
+        } else if (o !== EMPTY && STATE[o] !== GAS && temp[n] < 40) cold = true;
+      }
+    }
+    const old = this.life[i] <= 2;
+    if (T > 65 && !cold && !old) return false;
+    const crowd = this.countNear(i, x, y, STEAM, CLOUD);
+    if (y > H * 0.6 && crowd >= 2 && Math.random() < 0.6) {
+      this.morph(i, CLOUD); temp[i] = T; this.life[i] = 700 + ((Math.random() * 900) | 0);
+      this.discover(DISC.RAIN_CLOUD);
+      return true;
+    }
+    // A thin wisp on its own just mixes into the air (that is evaporation);
+    // dense steam turns back into drops of water.
+    if ((old && Math.random() < 0.6) || (crowd === 0 && Math.random() < 0.4)) { this.set(i, EMPTY, AMBIENT); return true; }
+    this.morph(i, WATER); temp[i] = Math.min(T, 30); // drops come down cool
+    this.discover(DISC.CONDENSE);
+    return true;
+  }
+
+  // How many of the 8 cells around i are of type a or b.
+  countNear(i, x, y, a, b) {
+    const { W, H, type } = this;
+    let n = 0;
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+      if ((!dx && !dy) || x + dx < 0 || x + dx >= W || y + dy < 0 || y + dy >= H) continue;
+      const o = type[i + dx + dy * W];
+      if (o === a || o === b) n++;
+    }
+    return n;
+  }
+
+  // Lava meeting water, ice or snow: the water flashes into steam and the
+  // lava sets into stone at once (into glassy obsidian when it is quenched
+  // from several sides).
+  quench(i, x, y) {
+    const n = this.randomNeighbor(i, x, y);
+    if (n < 0) return false;
+    const o = this.type[n];
+    if (o !== WATER && o !== BRINE && o !== ICE && o !== SNOW) return false;
+    if (o === BRINE) { this.set(n, SALT, 300); this.vent(n, n % this.W, (n / this.W) | 0, 140); }
+    else this.set(n, STEAM, 140);
+    const glassy = this.countNear(i, x, y, WATER, BRINE) >= 5 && Math.random() < 0.3;
+    this.morph(i, glassy ? OBSIDIAN : STONE);
+    this.temp[i] = 550;
+    this.discover(glassy ? DISC.OBSIDIAN : DISC.QUENCH);
+    return true;
+  }
+
+  // Water soaks the alkali out of wood ash and becomes lye.
+  ashLye(i, x, y) {
+    if (Math.random() > 0.05) return false;
+    const n = this.randomNeighbor(i, x, y);
+    if (n < 0 || this.type[n] !== WATER) return false;
+    this.morph(n, LYE);
+    this.set(i, EMPTY, this.temp[i]);
+    this.discover(DISC.LYE_ASH);
+    return true;
+  }
+
   corrode(i, x, y) {
     if (Math.random() > 0.3) return false;
     const n = this.randomNeighbor(i, x, y);
     if (n < 0) return false;
     const o = this.type[n];
     if (o === EMPTY || o === ACID || STATE[o] === GAS) return false;
+    // Mixing into water: it warms the water and weakens until it is just water.
+    if (o === WATER) {
+      if (Math.random() < 0.06) {
+        this.temp[n] += 12;
+        this.morph(i, WATER); this.temp[i] += 18;
+        this.discover(DISC.DILUTE);
+        return true;
+      }
+      return false;
+    }
     if (Math.random() < HARD[o] * 0.5) {
-      this.set(n, Math.random() < 0.25 ? SMOKE : EMPTY, this.temp[n] + 15);
+      // Metal fizzes out hydrogen; concrete and cement fizz out carbon dioxide.
+      const gas = o === METAL || o === RUST ? HYDROGEN : o === CONCRETE || o === CEMENT ? CO2 : Math.random() < 0.25 ? SMOKE : EMPTY;
+      this.set(n, gas, this.temp[n] + 15);
+      if (gas === HYDROGEN) this.discover(DISC.FIZZ);
       this.discover(DISC.ACID);
       if (Math.random() < 0.3) { this.set(i, EMPTY); return true; }
     }

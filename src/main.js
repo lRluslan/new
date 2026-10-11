@@ -28,7 +28,7 @@ const TOOLS = [
   { id: 'erase', name: 'Eraser', key: 'E', desc: 'Removes anything it touches, creatures included.' },
   { id: 'heat', name: 'Heat', key: 'H', desc: 'Raises the temperature. Melts, boils and ignites things.' },
   { id: 'cool', name: 'Cool', key: 'J', desc: 'Lowers the temperature, down to -200 °C. Freezes water.' },
-  { id: 'grab', name: 'Grab', key: 'G', desc: 'Click and drag a creature to pick it up. Let go to drop it, or flick the mouse to throw it.' },
+  { id: 'grab', name: 'Grab', key: 'G', desc: 'Press on any part of a creature (a hand, a foot, the head) and drag it. Flick the mouse to throw. Hard hits hurt, and glass and ice shatter.' },
   { id: 'bomb', name: 'Bomb', key: 'B', desc: 'Click to set off an explosion. A bigger brush makes a bigger blast.' },
   { id: 'bolt', name: 'Lightning', key: 'L', desc: 'Click to call down a lightning bolt. It sets trees alight and turns sand to glass.' },
   { id: 'wind', name: 'Wind', key: 'W', desc: 'Hold to blow things away from the pointer: sand, water, smoke, fire and creatures.' },
@@ -454,8 +454,10 @@ function dropHeld() {
 }
 function pressCreature(mode, e) {
   const p = worldPoint(e.clientX, e.clientY);
-  const hit = creatures.pickPoint(p.x, p.y, mode === 'grab' ? 2.6 : 1.4);
-  if (hit) { state.held = hit.c; creatures.startGrab(hit.c, hit.k); creatures.moveGrab(hit.c, p.x, p.y); return; }
+  // Any body part can be grabbed: a hand, a foot, a tail, the head, or
+  // anywhere along an arm, a leg or the body.
+  const hit = creatures.pickPart(p.x, p.y, mode === 'grab' ? 1.6 : 0.6);
+  if (hit) { state.held = hit.c; creatures.startGrab(hit.c, hit.a, hit.b, hit.t); creatures.moveGrab(hit.c, p.x, p.y); return; }
   if (mode !== 'spawn') return;
   if (p.x < 0 || p.y < 0 || p.x >= world.W || p.y >= world.H) return;
   creatures.spawn(state.selected.id, p.x, Math.floor(p.y));
@@ -557,9 +559,13 @@ function paint() {
   const mobTool = state.selected.kind === 'mob' || (state.selected.kind === 'tool' && ['grab', 'bolt', 'fill', 'meteor'].includes(state.selected.id));
   r2d.line = state.lineFrom && c.inside ? { x0: state.lineFrom.x, y0: state.lineFrom.y, x1: c.x, y1: c.y } : null;
   r2d.cursor = c.inside && !mobTool ? { x: c.x, y: c.y, r } : null;
+  r2d.grabLine = null;
   if (state.held) {
     const p = worldPoint(state.pointer.x, state.pointer.y);
     creatures.moveGrab(state.held, p.x, p.y);
+    // A thin line from the grip to the pointer shows what is being held.
+    const h = state.held, g = h.grab;
+    if (g) r2d.grabLine = { x0: h.px[g.a] + (h.px[g.b] - h.px[g.a]) * g.t, y0: h.py[g.a] + (h.py[g.b] - h.py[g.a]) * g.t, x1: p.x, y1: p.y };
   }
   if (state.painting) {
     const from = state.lastCell || c;
@@ -634,7 +640,7 @@ let lastIns = '';
 function hoverMob() {
   if (!state.pointer || !creatures.list.length) return null;
   const p = worldPoint(state.pointer.x, state.pointer.y);
-  const hit = creatures.pickPoint(p.x, p.y, 1.6);
+  const hit = creatures.pickPart(p.x, p.y, 0.8);
   return hit ? hit.c : null;
 }
 function cellAt(x, y) {
@@ -766,19 +772,22 @@ document.addEventListener('visibilitychange', () => sound.setHidden(document.hid
 // Soft ticks on the interface buttons.
 document.addEventListener('click', e => { if (e.target.closest('button') && !e.target.closest('#btn-sound')) sound.click(); });
 // How much fire and lava there is, counted a few times a second.
-let fireN = 0, lavaN = 0, countT = 0;
+let fireN = 0, lavaN = 0, steamN = 0, countT = 0;
 function soundTick(dt) {
   sound.events(world.fx, world.W);
   if ((countT -= dt) <= 0) {
     countT = 0.2;
     const { type, flags } = world;
-    let f = 0, l = 0;
+    let f = 0, l = 0, st = 0;
     for (let i = 0; i < type.length; i++) {
       const t = type[i];
       if (t === El.FIRE || (flags[i] & 4)) f++;
       else if (t === El.LAVA || t === El.MOLTEN || t === El.MOLTEN_GOLD) l++;
+      else if (t === El.STEAM) st++;
     }
-    fireN = f; lavaN = l;
+    // A burst of new steam hisses.
+    if (st - steamN > 6 && !state.paused) sound.hiss(0, st - steamN);
+    fireN = f; lavaN = l; steamN = st;
   }
   sound.update({
     dt, night: nightNow, weather: state.weather, paused: state.paused, fire: fireN, lava: lavaN,

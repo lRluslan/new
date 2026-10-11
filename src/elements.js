@@ -12,7 +12,7 @@ export const EMPTY = 0, STONE = 1, DIRT = 2, SAND = 3, SNOW = 4, ASH = 5,
   FIREWORK = 48, SPARKLE = 49, CLOUD = 50, BATTERY = 51, LAMP = 52, DRIED_BLOOD = 53,
   QUICKSAND = 54, URANIUM = 55, HYDROGEN = 56, CORN = 57, POPCORN = 58, DIAMOND = 59, TAR = 60, CACTUS = 61,
   FLOWER = 62, BLOOM = 63, SPONGE = 64, RUBBER = 65, DRY_ICE = 66, CO2 = 67, LYE = 68, TORCH = 69,
-  BLACK_HOLE = 70, HEATER = 71, FREEZER = 72, HAIL = 73, METEOR = 74;
+  BLACK_HOLE = 70, HEATER = 71, FREEZER = 72, HAIL = 73, METEOR = 74, STEAM = 75;
 
 export const SOLID = 1, POWDER = 2, LIQUID = 3, GAS = 4;
 
@@ -32,6 +32,7 @@ export const DISC = {
   MELTDOWN: 53, HYDROGEN: 54, POPCORN: 55, DIAMOND: 56, NEUTRALIZE: 57, BOUNCE: 58, GRAZE: 59,
   SUBLIME: 60, BLACK_HOLE: 61, BLOOM: 62, METEOR: 63,
   BIRTH: 64, HOME: 65, FORESTER: 66, FOOD_CHAIN: 67,
+  CONDENSE: 68, LYE_ASH: 69, FIZZ: 70, DILUTE: 71, DRY: 72, QUENCH: 73, SAND_MUD: 74,
 };
 
 export const DISCOVERIES = [
@@ -169,6 +170,20 @@ export const DISCOVERIES = [
     text: 'People and robots plant the seeds they collect. On soil a seed grows into a new tree, so the forest keeps going.' },
   { id: DISC.FOOD_CHAIN, title: 'Food chain', recipe: 'A hungry hunter', hint: 'Let a cat or a dog go hungry near smaller animals.',
     text: 'Plants feed the plant eaters, and hungry cats and dogs hunt the small animals. Each eats the one below it.' },
+  { id: DISC.CONDENSE, title: 'Condensation', recipe: 'Steam + cold', hint: 'Boil some water and watch where the steam goes.',
+    text: 'Steam rises, cools and turns back into drops of water. Where a lot of it gathers high up it forms clouds that rain.' },
+  { id: DISC.LYE_ASH, title: 'Lye from ash', recipe: 'Ash + water', hint: 'Wet some ash.',
+    text: 'Water soaks the alkali out of wood ash and turns into lye. It is how soap was made for thousands of years.' },
+  { id: DISC.FIZZ, title: 'Fizzing metal', recipe: 'Acid + metal', hint: 'Pour acid onto metal.',
+    text: 'Acid eats metal and gives off bubbles of hydrogen gas, which burns with a bang.' },
+  { id: DISC.DILUTE, title: 'Dilution', recipe: 'Acid + water', hint: 'Mix acid into water.',
+    text: 'Acid mixing into water gives off heat and gets weaker as it spreads, until it is just warm water.' },
+  { id: DISC.DRY, title: 'Drying out', recipe: 'Mud + heat', hint: 'Warm up some mud.',
+    text: 'Heat drives the water out of mud as steam, leaving soil behind. Much hotter, mud bakes into brick instead.' },
+  { id: DISC.QUENCH, title: 'Quenching', recipe: 'Lava + water', hint: 'Pour water onto lava.',
+    text: 'Water turns lava into stone in an instant and flashes into a burst of steam. Very sudden cooling makes black obsidian.' },
+  { id: DISC.SAND_MUD, title: 'Wet sand', recipe: 'Sand + water', hint: 'Pour water onto sand, or sand into water.',
+    text: 'Sand stirred up with water turns into soft, sticky mud.' },
 ];
 
 // Look up a discovery by its id (ids stay stable even if one is retired).
@@ -219,8 +234,8 @@ def(SEED, { name: 'Seed', cat: 'life', state: POWDER, density: 1100, k: 0.05, c:
   c2: ['#b07f3a', '#956a2f', '#c8954b', '#7f592a'] });
 
 def(WATER, { name: 'Water', cat: 'liquid', state: LIQUID, density: 1000, k: 0.14, c: 1.6, flow: 5, visc: 1, hard: 0,
-  hot: [100, EMPTY, DISC.BOIL], cold: [0, ICE, DISC.FREEZE], latent: [300, 60],
-  desc: 'Flows and levels out. Boils at 100 °C, freezes at 0 °C.',
+  hot: [100, STEAM, DISC.BOIL], cold: [0, ICE, DISC.FREEZE], latent: [300, 60],
+  desc: 'Flows and levels out. Boils into steam at 100 °C, freezes at 0 °C. Warm water slowly steams away.',
   c2: ['#4faa9c', '#47a093', '#5ab4a6', '#3f968c'] });
 
 def(OIL, { name: 'Oil', cat: 'liquid', state: LIQUID, density: 850, k: 0.035, c: 0.6, flow: 3, visc: 0.8,
@@ -521,6 +536,12 @@ def(HAIL, { name: 'Hail', cat: 'powder', state: POWDER, density: 900, k: 0.16, c
   c2: ['#eef8fc', '#dceef6', '#ffffff', '#c8e2ee'] });
 
 // A meteor: a rock glowing from its fall through the air. Blasts a crater where it lands.
+// Steam: water vapour. Rises, cools and condenses back into drops of water,
+// or into rain clouds where a lot of it gathers high up.
+def(STEAM, { name: 'Steam', cat: 'gas', state: GAS, density: 0.6, k: 0.004, c: 0.5, temp: 110, life: [500, 1000], rise: 0.8, hard: 0,
+  desc: 'Hot water vapour. Rises, cools and condenses back into water, or into rain clouds high up. Scalds anything it touches.',
+  c2: ['#eef6f4', '#e2eeec', '#f8fcfb', '#d6e6e2'] });
+
 def(METEOR, { name: 'Meteor', state: POWDER, density: 3500, k: 0.1, c: 0.8, temp: 1500, slide: 0.2, hard: 0.2, glow: true,
   c2: ['#ffcf6a', '#ff8a2a', '#ffe8a8', '#e8561e'] });
 

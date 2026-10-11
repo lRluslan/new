@@ -12,7 +12,7 @@ world is made to match the shape and size of your screen (about 5 screen
 pixels per cell). Reset or Clear fits it again if you have resized the window.
 Zoom in with the scroll wheel or a pinch to see the details.
 
-There are 67 things to discover, such as obsidian, boiling, glassmaking, brickmaking, charcoal,
+There are 74 things to discover, such as obsidian, boiling, glassmaking, brickmaking, charcoal,
 thermite, casting, rust, lightning, explosions, concrete, fireworks, electricity, popcorn, diamonds, meltdowns, drowning, zombie infection, new babies, homes, tree planting and the food chain. The **Discoveries** button in the top right keeps track of them.
 
 ### The look
@@ -76,8 +76,16 @@ The **Creatures** group in the palette has five kinds of little ragdoll creature
 The forest starts with residents: two people, a dog, a cat, three sheep, three chickens, two birds, two frogs and
 three fish. They live on their own (see *Life in the forest* below).
 
-Pick one and click to drop it in. With a creature or the **Grab** tool (`G`) selected, click and drag a creature to pick
-it up. Let go to drop it, or flick the mouse to throw it. The **Eraser** (or right mouse) removes creatures.
+Pick one and click to drop it in. The **Eraser** (or right mouse) removes creatures.
+
+**Grabbing and throwing.** With the **Grab** tool (`G`) or a creature selected, press on any part of a creature (a
+hand, a foot, a tail, the head, or anywhere along an arm, a leg or the body) and drag. A thin line shows what you are
+holding. The part you hold leads and the rest of the body swings and dangles after it, so a person held by one hand
+hangs from that hand, and heavy creatures lag behind the mouse. Let go to drop it, or flick the mouse to throw it.
+Throws carry on with the speed of the flick, and slamming creatures into the ground, walls or each other does real
+damage: the harder the hit, the worse it is, and the lighter creature comes off worse. A hard throw into glass or ice
+smashes straight through it. Yanking a limb far harder than the body can follow strains it: it is pulled out of joint
+and hangs limp, and with Blood on it can be torn off.
 
 They follow the same physics as everything else. Their bodies are made of joined parts (head, body, arms, legs) that
 fall, tumble and collide. Sand piles up on them and can bury them, and water flows around them. They float or sink by
@@ -237,7 +245,9 @@ Keys:
 - `?` opens the help.
 
 Things to try:
-- Pour lava into the pond and watch obsidian form as the water boils away.
+- Pour lava into the pond: it sets into stone in a cloud of steam.
+- Put water in a glass or metal box on a Heater and watch it boil. The steam rises, cools, and comes back down as rain.
+- Grab a person by one hand and swing them about, then throw them through a pane of glass.
 - Drop a seed on the grass, then add a little water next to it.
 - Use the Heat tool on the tree, or on a pile of sand.
 - Pour oil on water, then set it on fire.
@@ -249,6 +259,28 @@ Things to try:
 - Drop a zombie next to a few people and watch the infection spread. Then set the zombies on fire.
 - Throw a person into the pond, then into a pool of salt water.
 - Bury someone in sand, or put a chicken on a pile of gunpowder and light it.
+
+**Steam and the water cycle:** water boils into steam at 100 °C (warm water above 50 °C slowly
+steams too). Steam is light, so it rises (it even bubbles up through water), and it is hot enough to scald.
+It cools as it goes. Steam that touches something cold, or that has cooled enough, condenses back into
+drops of water that fall like rain, and where a lot of it gathers high up it forms a rain cloud. A thin wisp
+on its own simply mixes into the air. Fire hitting water goes out in a puff of steam, and boiling salt water
+leaves its salt behind. Steam is drawn as a soft cloud: faint and bluish at the edges, bright white where it
+is thick.
+
+**How materials mix:**
+- **Sand + water:** sand sinking into water, or soaked by water poured over it, turns into mud.
+- **Soil + water:** mud. **Mud + heat:** it dries back into soil (giving off steam); much hotter, it bakes into brick.
+- **Oil + water:** oil is lighter, so it floats on top. **Salt water** is heavier, so it sinks under fresh water.
+- **Salt + water:** the salt dissolves into salt water. Salt on ice or snow melts it.
+- **Lava + water, ice or snow:** the lava sets into stone at once and the water flashes into steam
+  (lava quenched from all sides sometimes turns into glassy obsidian).
+- **Acid:** eats almost everything except glass. On metal it fizzes out hydrogen (which can explode); on concrete
+  and cement it fizzes out carbon dioxide. Mixed into water it gives off heat and is diluted until it is just
+  warm water. Acid and lye cancel each other out into salt water.
+- **Ash + water:** water soaks the alkali out of wood ash and becomes lye.
+- **Water + metal:** rust (much faster with salt water).
+- **Steam + ice or snow:** melts it.
 
 **About lava:** lava is about 1150 °C, just below the melting point of rock,
 so it cannot melt through stone. Like real lava it is a poor conductor of
@@ -381,7 +413,8 @@ catches fire. Many times a second, every cell:
    latent heat, so ice stays at 0 °C while it melts and water stays at 100 °C
    while it boils.
 2. **Reacts.** Fire needs air, water smothers it, acid eats most materials,
-   plants drink water and grow, seeds sprout into trees, and gunpowder explodes.
+   materials mix (see *How materials mix* above), plants drink water and grow,
+   seeds sprout into trees, and gunpowder explodes.
 3. **Moves.** Gravity speeds falling things up, denser things sink through
    lighter liquids, liquids flow sideways to level out, gases rise, and
    explosions throw debris in arcs.

@@ -15,7 +15,7 @@ import * as El from './elements.js';
 
 const {
   EMPTY, STATE, SOLID, POWDER, LIQUID, DENS, VISC, FIRE, LAVA, MOLTEN, ACID, WATER, BRINE, BLOOD, BODY, OIL, ASH,
-  SMOKE, HONEY, DISC, RUBBER, CACTUS, CO2, URANIUM, PLANT, LYE,
+  SMOKE, HONEY, DISC, RUBBER, CACTUS, CO2, URANIUM, PLANT, LYE, GLASS, ICE,
 } = El;
 
 const GRAVITY = 0.035;    // cells per step²: 9.8 m/s² when a cell is about 17 cm and a step is 1/50 s
@@ -76,6 +76,9 @@ function biped(armsForward) {
       ['neck', 'elbowL', 0.85, 'shirt'], ['elbowL', 'handL', 0.75, 'skin'],
       ['neck', 'elbowR', 0.85, 'shirt'], ['elbowR', 'handR', 0.75, 'skin'],
       ['head', 'hips', 0, null, 0.4],
+      // Joint limits: knees and elbows cannot fold completely flat.
+      ['hips', 'footL', 0, null, 0.5, 0.62], ['hips', 'footR', 0, null, 0.5, 0.62],
+      ['neck', 'handL', 0, null, 0.4, 0.42], ['neck', 'handR', 0, null, 0.4, 0.42],
     ],
     dots: [['footL', 0.62, 'shoe'], ['footR', 0.62, 'shoe'], ['handL', 0.48, 'skin'], ['handR', 0.48, 'skin']],
     root: 'hips', headPt: 'head', neckPt: 'neck', headR: 1.15, walker: true, upright: true,
@@ -293,9 +296,12 @@ for (const sp of Object.values(SPECIES)) {
   sp.idx = idx;
   sp.rootK = idx[sp.root]; sp.headK = idx[sp.headPt]; sp.neckK = idx[sp.neckPt];
   sp.rest = sp.points.map(p => [p[1], p[2]]);
-  sp.stickList = sp.sticks.map(([a, b, thick, color, stiff]) => {
+  // A stick: a bone (or a brace). min: a joint limit that only stops the two
+  // ends coming closer than that fraction of their rest distance.
+  sp.stickList = sp.sticks.map(([a, b, thick, color, stiff, min]) => {
     const A = sp.rest[idx[a]], B = sp.rest[idx[b]];
-    return { a: idx[a], b: idx[b], len: Math.hypot(A[0] - B[0], A[1] - B[1]), thick, color, stiff: stiff ?? 1 };
+    const d = Math.hypot(A[0] - B[0], A[1] - B[1]);
+    return { a: idx[a], b: idx[b], len: min ? d * min : d, thick, color, stiff: stiff ?? 1, min: !!min };
   });
   sp.dotList = (sp.dots || []).map(([p, r, color]) => ({ k: idx[p], r, color }));
   sp.height = Math.max(...sp.rest.map(r => r[1])) + sp.headR;
@@ -319,6 +325,7 @@ class Creature {
     this.ox = new Float32Array(n); this.oy = new Float32Array(n);
     this.r = new Float32Array(sp.points.map(p => p[3] * Math.max(0.6, size)));
     this.im = new Float32Array(sp.points.map(p => 1 / p[4]));
+    this.mass = sp.points.reduce((m, p) => m + p[4], 0) * size * size;
     this.limb = new Uint8Array(sp.points.map(p => p[5]));
     this.wound = new Float32Array(n);   // all harm a part has taken (for blood on clothes)
     this.cut = new Float32Array(n);     // open wounds
@@ -527,6 +534,7 @@ export class Creatures {
     if (c.stun > 0) c.stun--;
     if (c.hurtFlash > 0) c.hurtFlash--;
     if (c.hurtT > 0) c.hurtT--;
+    if (c.slamT > 0) c.slamT--;
     if (c.biteT > 0) c.biteT--;
     if (!c.alive) c.deadT++;
     if (c.alive) this.think(c);
@@ -550,26 +558,65 @@ export class Creatures {
         vx *= 0.996;
         vy *= c.flapping && c.limb[k] !== LEG_L && c.limb[k] !== LEG_R ? 0.86 : 0.996;
       }
+      // Held up in the air, a body sways and settles instead of flying about.
+      if (c.grab) { vx *= 0.95; vy *= 0.95; }
       c.ox[k] = c.px[k]; c.oy[k] = c.py[k];
       c.px[k] += vx; c.py[k] += vy + ay;
     }
 
-    // Held by the mouse: that point follows the pointer, the rest swings.
+    // Held by the mouse: the grip (a spot anywhere along a body part) is
+    // pulled toward the pointer by a spring, and the rest of the body swings
+    // after it. Heavy bodies lag behind; a flick carries on as a throw.
     if (c.grab) {
-      const k = c.grab.k;
-      let dx = c.grab.x - c.px[k], dy = c.grab.y - c.py[k];
-      const d = Math.hypot(dx, dy), lim = 2.2;
+      const { a, b, t } = c.grab;
+      const gx = c.px[a] + (c.px[b] - c.px[a]) * t, gy = c.py[a] + (c.py[b] - c.py[a]) * t;
+      let dx = c.grab.x - gx, dy = c.grab.y - gy;
+      const d = Math.hypot(dx, dy), lim = 1.6;
       if (d > lim) { dx *= lim / d; dy *= lim / d; }
-      c.px[k] += dx * 0.5; c.py[k] += dy * 0.5;
+      const k = 0.5 / (1 + c.mass / 30);
+      // A pull on one spot also moves the body as a whole a little (the rest
+      // of the motion reaches it through its joints).
+      // (Parts stuck against something solid stay put: a trapped body has to
+      // be pulled free, and a limb can be strained doing it.)
+      for (let p = 0; p < c.n; p++) {
+        if (c.detached[p] || p === a || p === b) continue;
+        const nx = c.px[p] + dx * k * 0.3, ny = c.py[p] + dy * k * 0.3;
+        if (HARD_CELL[this.cellType(nx + Math.sign(dx) * c.r[p], ny + Math.sign(dy) * c.r[p])]) continue;
+        c.px[p] = nx; c.py[p] = ny;
+      }
+      const wa = 1 - t, wb = t, norm = wa * wa + wb * wb || 1;
+      for (const [p, w] of [[a, wa], [b, wb]]) {
+        if (!w) continue;
+        c.px[p] += dx * k * w / norm; c.py[p] += dy * k * w / norm;
+        // A little damping at the grip keeps the swing from getting wild.
+        c.ox[p] += (c.px[p] - c.ox[p]) * 0.08; c.oy[p] += (c.py[p] - c.oy[p]) * 0.08;
+      }
       c.stun = Math.max(c.stun, 30);
     }
 
     c.impact = 0;
-    for (let it = 0; it < ITERATIONS; it++) {
-      this.solveSticks(c);
+    // A held body hangs its whole weight off one spot, so its joints get a
+    // few extra passes to stay together. The held spot counts as very heavy
+    // while they are solved: the body is dragged along by it rather than
+    // pulling it back (a limb only stretches when the body cannot follow).
+    const passes = c.grab ? ITERATIONS + 6 : ITERATIONS;
+    let imA = 0, imB = 0;
+    if (c.grab) {
+      imA = c.im[c.grab.a]; imB = c.im[c.grab.b];
+      if (c.grab.t < 1) c.im[c.grab.a] = 0;
+      if (c.grab.t > 0) c.im[c.grab.b] = 0;
+    }
+    for (let it = 0; it < passes; it++) {
+      // Strain is measured on the last pass: what is left once the body has
+      // done its best to follow.
+      this.solveSticks(c, it === passes - 1);
       this.collide(c, it === 0);
     }
+    if (c.grab) { c.im[c.grab.a] = imA; c.im[c.grab.b] = imB; }
+    // One crash hurts once, even if several parts hit one after another.
+    if (c.crashT > 0) { c.crashT--; if (c.impact <= c.crashV) c.impact = 0; }
     if (c.impact > FALL_HURTS && c.age > 5) {
+      c.crashT = 8; c.crashV = c.impact;
       const k = c.impactK;
       const dmg = (c.impact - FALL_HURTS) * 45 * (k === sp.headK ? 1.3 : 1) * (sp.landsOnFeet ? 0.1 : 1);
       this.hurt(c, dmg, k, 'fall', dmg);
@@ -578,15 +625,25 @@ export class Creatures {
     this.environment(c);
   }
 
-  solveSticks(c) {
+  solveSticks(c, measure) {
     const { px, py, im } = c;
     for (const s of c.sticks) {
       if (s.broken) continue;
       const a = s.a, b = s.b;
       const dx = px[b] - px[a], dy = py[b] - py[a];
       const d = Math.sqrt(dx * dx + dy * dy) || 1e-6;
+      if (s.min && d >= s.len) continue;
+      // A limb yanked far beyond its length is strained; strained long and
+      // hard enough, it is pulled out of joint (or, with gore on, torn off).
+      if (measure && s.thick && !s.min) {
+        const over = d / s.len - 1.45;
+        if (over > 0) { s.strain = (s.strain || 0) + over; if (s.strain > 2.5) this.overstretch(c, s); }
+        else if (s.strain) s.strain *= 0.9;
+      }
       const diff = (d - s.len) / d * s.stiff;
-      const wa = im[a] / (im[a] + im[b]), wb = 1 - wa;
+      const sum = im[a] + im[b];
+      if (sum === 0) continue; // both ends held: this bone just goes where the grip goes
+      const wa = im[a] / sum, wb = 1 - wa;
       px[a] += dx * diff * wa; py[a] += dy * diff * wa;
       px[b] -= dx * diff * wb; py[b] -= dy * diff * wb;
     }
@@ -612,6 +669,12 @@ export class Creatures {
       for (let cy = y0; cy <= y1; cy++) for (let cx = x0; cx <= x1; cx++) {
         const ct = type[cx + W * cy];
         if (!HARD_CELL[ct] || (flags[cx + W * cy] & PASS)) continue;
+        // Slammed hard into glass or ice: it shatters.
+        if ((ct === GLASS || ct === ICE) && vx0 * vx0 + vy0 * vy0 > 1.2) {
+          w.set(cx + W * cy, EMPTY, w.temp[cx + W * cy]);
+          w.addFx({ k: 'shatter', x: cx + 0.5, y: cy + 0.5, t: ct });
+          continue;
+        }
         if (ct === RUBBER) bouncy = true;
         // Closest point of the cell to the point's centre.
         const qx = x < cx ? cx : x > cx + 1 ? cx + 1 : x;
@@ -671,14 +734,25 @@ export class Creatures {
         if (A.strength > 0 && B.strength > 0) continue;
         const reach = A.sp.height + B.sp.height;
         if (Math.abs(A.px[ra] - B.px[rb]) > reach || Math.abs(A.py[ra] - B.py[rb]) > reach) continue;
+        let hit = 0, hi = 0, hj = 0;
         for (let i = 0; i < A.n; i++) for (let j = 0; j < B.n; j++) {
           const dx = B.px[j] - A.px[i], dy = B.py[j] - A.py[i];
           const R = (A.r[i] + B.r[j]) * 0.8, d2 = dx * dx + dy * dy;
           if (d2 >= R * R || d2 < 1e-8) continue;
           const d = Math.sqrt(d2), push = (R - d) / d * 0.5;
+          // How fast they were coming together along the line between them.
+          const closing = -(((B.px[j] - B.ox[j]) - (A.px[i] - A.ox[i])) * dx + ((B.py[j] - B.oy[j]) - (A.py[i] - A.oy[i])) * dy) / d;
+          if (closing > hit) { hit = closing; hi = i; hj = j; }
           const wa = A.im[i] / (A.im[i] + B.im[j]) * 2, wb = 2 - wa;
           A.px[i] -= dx * push * wa; A.py[i] -= dy * push * wa;
           B.px[j] += dx * push * wb; B.py[j] += dy * push * wb;
+        }
+        // Slammed together: both get hurt, the lighter one more.
+        if (hit > 0.7 && !(A.slamT > 0) && !(B.slamT > 0)) {
+          const base = (hit - 0.7) * 30, total = A.mass + B.mass;
+          this.hurt(A, base * 2 * B.mass / total, hi, 'slam', base);
+          this.hurt(B, base * 2 * A.mass / total, hj, 'slam', base);
+          A.slamT = B.slamT = 12;
         }
       }
     }
@@ -1273,7 +1347,7 @@ export class Creatures {
   // How a cause harms the body: cuts open wounds that bleed, blunt force
   // bruises and breaks.
   static CUTS = { blast: 1, bite: 1, crush: 0.3, lightning: 0.3, spine: 0.6 };
-  static BLUNT = { fall: 1, crush: 1, blast: 0.6, shock: 0.2 };
+  static BLUNT = { fall: 1, crush: 1, blast: 0.6, shock: 0.2, slam: 1, stretch: 0.6 };
 
   // What a hit does to one body part: wounds, bruises, bleeding, a broken
   // limb, and with gore on, a limb torn off by one big enough blow.
@@ -1364,6 +1438,19 @@ export class Creatures {
 
   // A limb comes off: break every stick joining it to the rest of the body.
   // Both sides of the cut bleed hard at first.
+  // A limb pulled far too long: it hurts and goes limp (out of joint), and
+  // with gore on it tears off.
+  overstretch(c, s) {
+    s.strain = 0;
+    const k = c.limb[s.a] === CORE ? s.b : s.a, limb = c.limb[s.b] !== CORE ? c.limb[s.b] : c.limb[s.a];
+    if (limb === CORE) return;
+    // Already out of joint: it just hangs, and hurts a little more.
+    const out = c.limbHp[limb] <= 0;
+    this.hurt(c, out ? 2 : 12, k, 'stretch', out ? 2 : 12);
+    c.limbHp[limb] = Math.max(-c.sp.hp * 0.6, c.limbHp[limb] - c.sp.hp * 0.25);
+    if (this.gore && c.limbHp[limb] < -c.sp.hp * 0.3 && (limb !== HEAD || !c.alive || c.limbHp[HEAD] < -c.sp.hp * 0.6)) this.detach(c, limb);
+  }
+
   detach(c, limb) {
     if (limb === CORE) return;
     let broke = false;
@@ -1456,6 +1543,31 @@ export class Creatures {
 
   // ----- the mouse -----
   // Nearest body point to (x, y) within maxD.
+  // The body part under (x, y): the closest spot along any bone or the head,
+  // within maxD of its surface. Returns { c, a, b, t } (t: where along a→b).
+  pickPart(x, y, maxD) {
+    let best = null, bd = maxD;
+    for (const c of this.list) {
+      for (const s of c.sticks) {
+        if (s.broken || !s.thick) continue;
+        const ax = c.px[s.a], ay = c.py[s.a], ex = c.px[s.b] - ax, ey = c.py[s.b] - ay;
+        const L2 = ex * ex + ey * ey || 1e-6;
+        const t = Math.max(0, Math.min(1, ((x - ax) * ex + (y - ay) * ey) / L2));
+        // (Only part of the thickness counts, so small parts win close calls.)
+        const d = Math.hypot(ax + ex * t - x, ay + ey * t - y) - s.thick * 0.3 * c.size;
+        if (d < bd) { bd = d; best = { c, a: s.a, b: s.b, t }; }
+      }
+      // Hands, feet and paws, and the head: grabbed by themselves.
+      for (const dot of c.sp.dotList) {
+        const d = Math.hypot(c.px[dot.k] - x, c.py[dot.k] - y) - dot.r * c.size - 0.15;
+        if (d < bd) { bd = d; best = { c, a: dot.k, b: dot.k, t: 0 }; }
+      }
+      const h = c.sp.headK, d = Math.hypot(c.px[h] - x, c.py[h] - y) - c.r[h] - 0.1;
+      if (d < bd) { bd = d; best = { c, a: h, b: h, t: 0 }; }
+    }
+    return best;
+  }
+
   pickPoint(x, y, maxD) {
     let best = null, bd = maxD;
     for (const c of this.list) {
@@ -1467,8 +1579,8 @@ export class Creatures {
     return best;
   }
 
-  startGrab(c, k) {
-    c.grab = { k, x: c.px[k], y: c.py[k] };
+  startGrab(c, a, b = a, t = 0) {
+    c.grab = { a, b, t, x: c.px[a] + (c.px[b] - c.px[a]) * t, y: c.py[a] + (c.py[b] - c.py[a]) * t };
     if (c.alive) { c.mood = 'panic'; c.hurtT = 150; }
   }
   moveGrab(c, x, y) { if (c.grab) { c.grab.x = x; c.grab.y = y; } }

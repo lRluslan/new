@@ -247,6 +247,19 @@ export class Sound {
     [784, 988, 1175].forEach((f, k) => this.tone({ type: 'triangle', f0: f, dur: 0.4, gain: 0.06, pan, when: k * 0.1, attack: 0.02 }));
   }
 
+  // Glass or ice breaking: a sharp crack and tinkling bits.
+  shatter(pan) {
+    if (!this.ready() || !this.limit('shatter', 0.06)) return;
+    this.noise({ type: 'highpass', f0: 3000, dur: 0.09, gain: 0.25, pan });
+    for (let k = 0; k < 6; k++) this.tone({ type: 'triangle', f0: 2800 + Math.random() * 2600, dur: 0.05, gain: 0.04, pan, when: 0.03 + Math.random() * 0.3 });
+  }
+
+  // Steam hissing out (rate-limited; called when there is a lot of new steam).
+  hiss(pan, amount) {
+    if (!this.ready() || !this.limit('hiss', 0.25)) return;
+    this.noise({ type: 'highpass', f0: 5000, dur: 0.35, gain: Math.min(0.08, 0.02 + amount * 0.004), attack: 0.05, pan });
+  }
+
   // A rising chime for a new discovery.
   chime() {
     if (!this.ready()) return;
@@ -340,6 +353,7 @@ export class Sound {
       else if (e.k === 'hurt') { this.voice(e.c, 'hurt', pan(e.x)); if (e.jolt > 6) this.thud(pan(e.x), Math.min(1.5, e.jolt / 20)); }
       else if (e.k === 'die') this.voice(e.c, 'die', pan(e.x));
       else if (e.k === 'chips') this.chop(pan(e.x));
+      else if (e.k === 'shatter') this.shatter(pan(e.x));
       else if (e.k === 'knock') this.knock(pan(e.x));
       else if (e.k === 'crumb') this.nibble(pan(e.x));
       else if (e.k === 'sip') this.sip(pan(e.x));
