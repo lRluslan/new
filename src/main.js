@@ -6,12 +6,11 @@
 
 import * as El from './elements.js';
 import { World } from './world.js';
-import { autumnGlade, emptyWorld, worldSizeFor } from './scenes.js';
+import { forestGlade, emptyWorld, worldSizeFor } from './scenes.js';
 import { Renderer2D } from './render2d.js';
 import { drawSwatch } from './swatches.js';
 import { Creatures, SPECIES, SPECIES_ORDER, iconCreature } from './creatures.js';
 import { drawCreature } from './creatureArt.js';
-import { STYLES, STYLE_BY_ID } from './styles.js';
 
 const $ = sel => document.querySelector(sel);
 const app = $('#app');
@@ -55,7 +54,7 @@ function screenSize() {
 }
 const size0 = screenSize();
 const world = new World(size0.W, size0.H);
-autumnGlade(world);
+forestGlade(world);
 const creatures = new Creatures(world);
 creatures.gore = store.get('gore', true);
 const r2d = new Renderer2D(stage, world);
@@ -268,7 +267,7 @@ function fitWorld() {
   world.resize(W, H);
   r2d.rebuild();
 }
-function resetScene() { dropHeld(); fitWorld(); creatures.clear(); autumnGlade(world); r2d.resetZoom(); }
+function resetScene() { dropHeld(); fitWorld(); creatures.clear(); forestGlade(world); r2d.resetZoom(); }
 function clearScene() { dropHeld(); fitWorld(); creatures.clear(); emptyWorld(world); }
 
 $('#btn-thermal').addEventListener('click', () => {
@@ -286,37 +285,6 @@ function setGore(on) {
   $('#gore-label').textContent = on ? 'Blood' : 'No blood';
 }
 $('#btn-gore').addEventListener('click', () => setGore(!creatures.gore));
-
-// ----- visual style -----
-// Styles recolour the world (and the interface accent). The picker in
-// Settings previews each one on the world as it is now.
-function setStyle(id) {
-  const st = STYLE_BY_ID[id] || STYLES[0];
-  state.style = st.id;
-  store.set('style', st.id);
-  r2d.setStyle(st);
-  const [r, g, b] = El.hexToRgb(st.accent);
-  app.style.setProperty('--accent', st.accent);
-  app.style.setProperty('--accent-ink', st.ink);
-  app.style.setProperty('--accent-soft', `rgba(${r}, ${g}, ${b}, 0.14)`);
-  for (const c of document.querySelectorAll('.style-card')) c.setAttribute('aria-checked', String(c.dataset.style === st.id));
-}
-const styleGrid = $('#style-grid');
-for (const st of STYLES) {
-  const b = document.createElement('button');
-  b.type = 'button';
-  b.className = 'style-card';
-  b.dataset.style = st.id;
-  b.setAttribute('role', 'radio');
-  b.innerHTML = `<canvas></canvas><b><i style="background:${st.accent}"></i>${st.name}</b><span>${st.desc}</span>`;
-  b.addEventListener('click', () => setStyle(st.id));
-  styleGrid.append(b);
-}
-function openSettings() {
-  for (const b of styleGrid.children) r2d.preview(STYLE_BY_ID[b.dataset.style], b.querySelector('canvas'), creatures.gore);
-  openPanel('settings-panel');
-}
-$('#btn-settings').addEventListener('click', openSettings);
 
 // ----- panels -----
 function openPanel(id) {
@@ -584,7 +552,6 @@ window.addEventListener('keydown', e => {
   if (k === 'r') { resetScene(); return; }
   if (k === 'c') { clearScene(); return; }
   if (k === '?' || k === '/') { openPanel('help'); return; }
-  if (k === 'v') { openSettings(); return; }
   if (k === '+' || k === '=') { zoomBy(1.25); return; }
   if (k === '-' || k === '_') { zoomBy(0.8); return; }
   if (k === '[' || k === ']') { setBrush(state.brush + (k === '[' ? -1 : 1)); return; }
@@ -655,7 +622,7 @@ function resize() {
   // the untouched starting scene so it always fills the screen exactly.
   if (!touched) {
     const { W, H } = screenSize();
-    if (W !== world.W || H !== world.H) { world.resize(W, H); creatures.clear(); autumnGlade(world); r2d.rebuild(); }
+    if (W !== world.W || H !== world.H) { world.resize(W, H); creatures.clear(); forestGlade(world); r2d.rebuild(); }
   }
   r2d.resize(r.width, r.height);
 }
@@ -756,7 +723,6 @@ window.sandgrove = { world, creatures, r2d, El };
 select(state.selected);
 setWeather(state.weather);
 setTime(state.time);
-setStyle(store.get('style', 'autumn'));
 setGore(creatures.gore);
 setSpeed(state.speed);
 syncBrush();

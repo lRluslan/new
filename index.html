@@ -4,7 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Sandgrove</title>
-<meta name="description" content="A 2D falling-sand physics sandbox in pixel art, with ragdoll creatures.">
+<meta name="theme-color" content="#0c1a12">
+<meta name="description" content="A 2D falling-sand physics sandbox in green forest pixel art, with ragdoll creatures.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&family=Pixelify+Sans:wght@500;600;700&family=Silkscreen&display=swap">
@@ -15,16 +16,19 @@
   <aside class="rail" aria-label="Elements">
     <div class="brand">
       <svg class="logo" viewBox="0 0 16 16" aria-hidden="true" shape-rendering="crispEdges">
-        <rect x="7" y="1" width="2" height="2" fill="currentColor"/>
-        <rect x="9" y="4" width="2" height="2" fill="currentColor" opacity=".7"/>
-        <rect x="6" y="6" width="2" height="2" fill="currentColor" opacity=".85"/>
-        <rect x="5" y="10" width="6" height="2" fill="currentColor"/>
-        <rect x="3" y="12" width="10" height="2" fill="currentColor" opacity=".8"/>
-        <rect x="1" y="14" width="14" height="2" fill="currentColor" opacity=".6"/>
+        <rect x="6" y="1" width="4" height="1" fill="currentColor" opacity=".85"/>
+        <rect x="4" y="2" width="8" height="2" fill="currentColor"/>
+        <rect x="3" y="4" width="10" height="3" fill="currentColor"/>
+        <rect x="4" y="7" width="8" height="2" fill="currentColor" opacity=".8"/>
+        <rect x="6" y="9" width="4" height="1" fill="currentColor" opacity=".65"/>
+        <rect x="9" y="3" width="2" height="2" fill="#e8f7b0" opacity=".7"/>
+        <rect x="5" y="5" width="2" height="2" fill="#000" opacity=".18"/>
+        <rect x="7" y="9" width="2" height="5" fill="#8a6444"/>
+        <rect x="2" y="14" width="12" height="2" fill="currentColor" opacity=".55"/>
       </svg>
       <div>
         <h1>Sandgrove</h1>
-        <p>Falling-sand physics lab</p>
+        <p>A falling-sand forest</p>
       </div>
     </div>
     <div class="palette" id="palette"></div>
@@ -60,9 +64,6 @@
           <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.3a1 1 0 0 0 1 .9h3.8a1 1 0 0 0 1-.9l.6-8.3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </button>
         <span class="sep" aria-hidden="true"></span>
-        <button type="button" id="btn-settings" class="icon" title="Settings: visual style (V)" aria-label="Settings">
-          <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="2.2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M8 1.6v2M8 12.4v2M1.6 8h2M12.4 8h2M3.5 3.5l1.4 1.4M11.1 11.1l1.4 1.4M3.5 12.5l1.4-1.4M11.1 4.9l1.4-1.4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-        </button>
         <button type="button" id="btn-help" class="icon" title="How to play (?)" aria-label="How to play">
           <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6 6.2a2 2 0 1 1 2.8 1.8c-.5.3-.8.7-.8 1.3v.4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><circle cx="8" cy="12.2" r="1" fill="currentColor"/></svg>
         </button>
@@ -161,7 +162,7 @@
             <li><kbd>1</kbd>–<kbd>0</kbd> elements · <kbd>E</kbd> <kbd>H</kbd> <kbd>J</kbd> <kbd>G</kbd> <kbd>B</kbd> <kbd>L</kbd> <kbd>W</kbd> <kbd>N</kbd> <kbd>F</kbd> <kbd>M</kbd> tools</li>
             <li><kbd>[</kbd> <kbd>]</kbd> brush size · <kbd>+</kbd> <kbd>−</kbd> zoom · arrows move</li>
             <li><kbd>Space</kbd> pause · <kbd>.</kbd> step · <kbd>T</kbd> thermal camera</li>
-            <li><kbd>R</kbd> reset · <kbd>C</kbd> clear · <kbd>V</kbd> visual style</li>
+            <li><kbd>R</kbd> reset · <kbd>C</kbd> clear</li>
           </ul>
         </div>
       </div>
@@ -171,14 +172,6 @@
       <p class="lead">New: drop someone onto <b>Rubber</b>, pop some <b>Corn</b>, pile up <b>Uranium</b>, or let a <b>Black hole</b> loose. Draw walls with the <b>Line</b> tool.</p>
       <p class="tip">Try this first: pour lava into the pond, drop a seed on the grass, or set the tree on fire with the Heat tool. Then light some thermite on metal, lay a fuse to a pile of gunpowder, or switch the weather to Storm.</p>
       <button type="button" class="primary" id="help-start">Start playing</button>
-    </section>
-
-    <section class="panel settings" id="settings-panel" hidden aria-labelledby="settings-title">
-      <button type="button" class="close" aria-label="Close">×</button>
-      <p class="eyebrow">Settings</p>
-      <h2 id="settings-title">Visual style</h2>
-      <p class="lead">Pick a look for the world. Each preview shows your world as it is right now. The change is instant, and your choice is remembered.</p>
-      <div class="style-grid" id="style-grid" role="radiogroup" aria-label="Visual style"></div>
     </section>
 
     <section class="panel discoveries" id="disc-panel" hidden aria-labelledby="disc-title">

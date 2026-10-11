@@ -1,11 +1,12 @@
 // Renderer: draws the world one pixel per cell, scaled up with crisp edges.
-// Colours are picked per cell from warm autumn palettes, shaded by how deep a
-// cell sits below the open air (grass tops, lit leaf edges, darker deep water).
+// The art direction is a green forest: misty layers of trees behind, sunbeams
+// through the canopy, mossy rocks and lush grass. Colours are picked per cell
+// and shaded by how deep a cell sits below the open air (grass tops, lit leaf
+// edges, darker deep water).
 
 import * as El from './elements.js';
 import { rng } from './scenes.js';
 import { drawCreature, blend as blendC } from './creatureArt.js';
-import { STYLES, makeLut, applyLut } from './styles.js';
 
 const MOB_S = 3; // creature pixels per world cell: creatures are drawn finer than the world
 
@@ -29,30 +30,34 @@ function scale(c, f) {
 }
 
 const PAL = El.ELEMENTS.map(e => (e.c2 || ['#000000']).map(packHex));
-const GRASS = ['#efc94f', '#dcaa2e', '#c8931f', '#a9781f'].map(packHex);
-const BLADE = ['#f3d36a', '#e2b844'].map(packHex);
-const WATER_D = ['#b3e2d2', '#8cccb9', '#72b8a7', '#68ae9f', '#5fa498', '#579b8f', '#4f9287', '#47887e'].map(packHex);
-const LEAF_D = ['#e6c650', '#c9b343', '#97a23a', '#6f8c33', '#567a32', '#45682d', '#3a5a2a', '#2f4a26'].map(packHex);
-const LEAF_UNDER = packHex('#263f20');
+const GRASS = ['#a6e05a', '#74c447', '#53a53d', '#3d8838'].map(packHex);
+const BLADE = ['#94d854', '#5fae40', '#4a9a3a'].map(packHex);
+const MOSS = ['#8cc456', '#6aa84a', '#4f8c40'].map(packHex);
+const WATER_D = ['#c2f0dc', '#86d6c0', '#62bcaa', '#4faa9c', '#42998f', '#378883', '#2d7676', '#25646a'].map(packHex);
+const LEAF_D = ['#d4f07e', '#a4dc5c', '#7cc44c', '#5caa42', '#468e3c', '#367436', '#2a5c30', '#20482a'].map(packHex);
+const LEAF_UNDER = packHex('#173a24');
+// Little decorations on open grass: flowers and red-capped mushrooms.
+const PETALS = ['#ffffff', '#ffe066', '#ff8ab8', '#b8a4ff', '#ff6a5a'].map(packHex);
+const STEM = packHex('#3f8f3a'), CAP = packHex('#e0483a'), CAP_DOT = packHex('#fff2e0'), CAP_STALK = packHex('#efe4c8');
 const FIRE_P = ['#fff6c4', '#ffe07a', '#ffb636', '#ff8a1f', '#ec5a1a', '#b8361a'].map(packHex);
 const LAVA_P = ['#ffd86e', '#ffab3a', '#ff7f1d', '#ec5a1b', '#c8401a'].map(packHex);
 const CRUST = packHex('#4a1e12');
 const HOT_RED = packHex('#ff4a14'), HOT_YEL = packHex('#ffcf6a');
 const SMOKE_C = packHex('#3f3b35'), GLASS_C = packHex('#e8f6f2');
-const SAND_TOP = packHex('#fcf0c8'), STONE_TOP = packHex('#b9b399'), SNOW_TOP = packHex('#ffffff');
-const OIL_TOP = packHex('#7a5a35'), WOOD_TOP = packHex('#a8743f'), ICE_TOP = packHex('#f2fdfd');
+const SAND_TOP = packHex('#f6ecc4'), SNOW_TOP = packHex('#ffffff');
+const OIL_TOP = packHex('#6a5a3a'), WOOD_TOP = packHex('#9a7048'), ICE_TOP = packHex('#f2fdfd');
 const BRINE_TINT = packHex('#9fb3a8'), MUD_TOP = packHex('#7a5c40'), SALT_TOP = packHex('#ffffff');
 const MORTAR = packHex('#c9b79c'), COAL_GLINT = packHex('#7a7680');
 const MOLTEN_P = ['#fff6d6', '#ffe9a8', '#ffd27a', '#ffb84a', '#f39a35'].map(packHex);
 const MERCURY_HI = packHex('#f4f8fa'), HONEY_D = ['#f6c45a', '#e8a93a', '#d9952a', '#c7821f', '#b06f18'].map(packHex);
 const CLONER_FRAME = packHex('#5b6270'), DRAIN_CORE = packHex('#05040a'), DRAIN_RIM = packHex('#4a3a78');
-const LEAF_COLORS = ['#e08a2c', '#d9a531', '#c4562a', '#f0c24a', '#b5462a'].map(packHex);
+const LEAF_COLORS = ['#8ccf4e', '#6ab944', '#b4e264', '#4f9e3c', '#d2ec7a'].map(packHex);
+const MOTE = packHex('#fffbd2');
 const SPARK_C = packHex('#effcff'), ZAP_TINT = packHex('#8fe0ff');
 const GOLD_GLINT = packHex('#fff4c2'), LAMP_ON = packHex('#fff3b8'), LAMP_RIM = packHex('#ffcf5a'), LAMP_OFF = packHex('#857c68');
 const CLOUD_TOP = packHex('#ffffff'), CLOUD_BASE = packHex('#c9c4bb');
 const SPORE = packHex('#f0e2bc'), SPORE_GLOW = packHex('#9ff0c8');
-const NIGHT = packHex('#0b1224'), NIGHT_SKY = ['#060a18', '#0a1124', '#101a33', '#182544', '#22304f', '#2c3a58'].map(packHex);
-const STAR = packHex('#f4f2ff'), MOON = packHex('#f3efd8'), MOON_DARK = packHex('#cfc8ac');
+const NIGHT = packHex('#06181c');
 const FIREFLY = packHex('#d8ff7a');
 // Blood: glossy and bright on top, dark where it pools deep; fresh blood is redder.
 const RAD_GLOW = packHex('#8aff6a'), WHITE = packHex('#ffffff'), TAR_HI = packHex('#5a524c'), SPINE = packHex('#ece4b4');
@@ -92,104 +97,157 @@ const leafHeight = (x, y) => 0.75 * vnoise(x / 4.5, y / 3.6) + 0.25 * vnoise(x /
 // 4×4 ordered dither, the classic pixel-art way to blend two colours.
 const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5].map(v => (v + 0.5) / 16);
 
-function buildBackground(W, H, style) {
-  const buf = new Uint32Array(W * H);
+// ----- the forest behind the world -----
+// Four layers of trees, palest and haziest far away, darkest up close, with
+// a leafy canopy along the top, sunbeams fanning down through a gap in the
+// leaves and mist lying low over the ground. Day and night are built from the
+// same shapes, so dusk can blend smoothly from one to the other.
+const DAY_PAL = {
+  sky: ['#86c6a6', '#98d0aa', '#aad9ad', '#bde2b0', '#cfe9b3', '#dff0b8'],
+  glow: '#fdf8d4', glowK: 0.8,
+  layers: [ // far to near
+    { body: '#a3d2a6', hi: '#b6dead', lo: '#93c69c', trunk: '#97c6a0' },
+    { body: '#78b487', hi: '#90c890', lo: '#66a47b', trunk: '#6aa27e' },
+    { body: '#4f8e66', hi: '#68aa6e', lo: '#407a58', trunk: '#46745a' },
+    { body: '#2d6045', hi: '#42844c', lo: '#224c38', trunk: '#2c4a3a' },
+  ],
+  beam: '#fbf8cc', beamK: 0.34, mist: '#e2f2cf', mistK: 0.5,
+};
+const NIGHT_PAL = {
+  sky: ['#040c12', '#071218', '#0a181d', '#0e1f23', '#13272a', '#183030'],
+  glow: '#2e5052', glowK: 0.9,
+  layers: DAY_PAL.layers.map((L, k) => Object.fromEntries(Object.entries(L).map(([n, h]) => {
+    const c = blend(packHex(h), packHex('#05121a'), 0.72 + k * 0.05);
+    return [n, '#' + [R(c), G(c), B(c)].map(v => v.toString(16).padStart(2, '0')).join('')];
+  }))),
+  beam: '#3c6464', beamK: 0.45, mist: '#24403f', mistK: 0.45,
+};
+const STAR = packHex('#eef6ff'), MOON = packHex('#eef2dc'), MOON_DARK = packHex('#c4ccb4'), NIGHT_SKY1 = packHex('#071218');
+
+// Where the light comes from: a gap in the canopy, above the top right.
+const sunAt = (W, H) => [W * 0.7, -H * 0.06];
+
+function buildForest(W, H, pal) {
+  const buf = new Uint32Array(W * H), painted = new Uint8Array(W * H), beam = new Uint8Array(W * H);
   const rand = rng(77);
-  buf.set(buildSkyOnly(W, H, style));
-  // Three layers of far-off trees and hills, in the style's colours.
-  const layers = [
-    { base: 0.4, spread: 0.3, rmin: 0.05, rmax: 0.09, per: 18, ...style.layers[0] },
-    { base: 0.3, spread: 0.28, rmin: 0.06, rmax: 0.11, per: 26, ...style.layers[1] },
-    { base: 0.2, spread: 0.24, rmin: 0.07, rmax: 0.12, per: 34, ...style.layers[2] },
+  const dith = (r, x) => BAYER[(r & 3) * 4 + (x & 3)];
+  // Sky: a soft gradient, brighter low down where the haze catches the light.
+  const sky = pal.sky.map(packHex);
+  for (let r = 0; r < H; r++) {
+    const f = (r / (H * 0.8)) * (sky.length - 1);
+    for (let x = 0; x < W; x++) buf[r * W + x] = sky[Math.max(0, Math.min(sky.length - 1, Math.floor(f + dith(r, x))))];
+  }
+  const [sx, sr] = sunAt(W, H);
+  const layerDefs = [
+    { crownAt: [0.56, 0.74], crownR: [0.06, 0.09], per: 15, tw: [1, 2], ground: 0.44 },
+    { crownAt: [0.64, 0.82], crownR: [0.07, 0.1], per: 22, tw: [2, 3], ground: 0.4 },
+    { crownAt: [0.84, 0.96], crownR: [0.08, 0.12], per: 34, tw: [3, 4], ground: 0.36, gap: 0.08 },
+    { crownAt: [0.95, 1.04], crownR: [0.09, 0.14], per: 58, tw: [4, 7], ground: 0.3, gap: 0.13 },
   ];
-  for (const L of layers) {
+  layerDefs.forEach((D, li) => {
+    const L = pal.layers[li];
     const body = packHex(L.body), hi = packHex(L.hi), lo = packHex(L.lo), trunk = packHex(L.trunk);
-    const trunkHi = blend(trunk, hi, 0.4);
-    const blobs = [];
-    const n = Math.ceil(W / L.per) + 2;
+    const trunkHi = blend(trunk, hi, 0.5), trunkLo = blend(trunk, lo, 0.6);
+    const put = (x, y, c) => { if (x < 0 || x >= W || y < 0 || y >= H) return; const p = (H - 1 - y) * W + x; buf[p] = c; painted[p] = 1; };
+    const crowns = [];
+    const n = Math.ceil(W / D.per) + 2;
     for (let k = 0; k < n; k++) {
-      const cx = (k + rand() * 0.8) * L.per - L.per * 0.5;
-      const cyUp = H * (L.base + rand() * L.spread);
-      const r = H * (L.rmin + rand() * (L.rmax - L.rmin));
-      const tw = 1 + ((rand() * 3) | 0);
-      for (let y = 0; y < cyUp; y++) for (let x = Math.round(cx - tw / 2); x < Math.round(cx + tw / 2) + 1; x++) {
-        if (x < 0 || x >= W) continue;
-        const row = H - 1 - y;
-        buf[row * W + x] = x === Math.round(cx - tw / 2) ? trunkHi : trunk;
+      const cx = (k + 0.15 + rand() * 0.7) * D.per - D.per * 0.5;
+      const cy = H * (D.crownAt[0] + rand() * (D.crownAt[1] - D.crownAt[0]));
+      const r = H * (D.crownR[0] + rand() * (D.crownR[1] - D.crownR[0]));
+      const tw = D.tw[0] + ((rand() * (D.tw[1] - D.tw[0] + 1)) | 0);
+      const extra = [0, 1, 2].map(() => [(rand() - 0.5) * r * 1.9, (rand() - 0.55) * r * 0.9, r * (0.5 + rand() * 0.35)]);
+      const lean = (rand() - 0.5) * 0.06;
+      // The canopy layers leave a gap where the sun comes through.
+      if (D.gap && Math.abs(cx - sx) < W * D.gap) continue;
+      // Trunk, lit on the right where the sun is, with a little bark texture.
+      for (let y = 0; y < cy; y++) {
+        const x0 = Math.round(cx - tw / 2 + lean * y);
+        for (let dx = 0; dx < tw; dx++) {
+          let c = dx === tw - 1 && tw > 1 ? trunkHi : dx === 0 && tw > 2 ? trunkLo : trunk;
+          if (tw > 2 && hash(x0 + dx, y >> 1) < 0.1) c = trunkLo;
+          put(x0 + dx, y, c);
+        }
       }
-      blobs.push([cx, cyUp, r]);
-      for (let j = 0; j < 3; j++) {
-        blobs.push([cx + (rand() - 0.5) * r * 1.8, cyUp + (rand() - 0.6) * r * 0.9, r * (0.5 + rand() * 0.35)]);
-      }
+      crowns.push([cx + lean * cy, cy, r], ...extra.map(([ox, oy, rr]) => [cx + lean * cy + ox, cy + oy, rr]));
     }
-    // Undergrowth band so lower layers are never plain sky.
-    const bandTop = H * (L.base * 0.75);
+    // Undergrowth: a bumpy band of bushes and ferns along the bottom.
     for (let x = 0; x < W; x++) {
-      const top = bandTop + 2 * Math.sin(x * 0.2 + L.base * 40) + 1.5 * Math.sin(x * 0.07);
-      for (let y = 0; y < top; y++) buf[(H - 1 - y) * W + x] = y > top - 1.5 ? hi : body;
+      let top = H * D.ground + 2.5 * vnoise(x / 6, li * 10) + 1.2 * Math.sin(x * 0.13 + li);
+      if (hash(x, li + 40) < 0.12) top += 1 + (hash(x, li + 41) < 0.4);
+      for (let y = 0; y < top; y++) put(x, y, y > top - 1.5 ? hi : (hash(x, y + li * 99) < 0.08 ? lo : body));
     }
-    for (const [cx, cyUp, r] of blobs) {
-      for (let y = Math.floor(cyUp - r); y <= Math.ceil(cyUp + r); y++) {
+    // Leafy crowns: fluffy edges, lit from the top right.
+    for (const [cx, cy, r] of crowns) {
+      for (let y = Math.floor(cy - r); y <= Math.ceil(cy + r); y++) {
         if (y < 0 || y >= H) continue;
         for (let x = Math.floor(cx - r); x <= Math.ceil(cx + r); x++) {
           if (x < 0 || x >= W) continue;
-          const dx = (x - cx) / r, dy = (y - cyUp) / r;
-          if (dx * dx + dy * dy > 1) continue;
+          const dx = (x - cx) / r, dy = (y - cy) / r;
+          const d = Math.sqrt(dx * dx + dy * dy);
+          if (d > 1 - 0.24 * vnoise(x / 2.2 + li * 13, y / 2.2)) continue;
           const row = H - 1 - y;
-          const light = -dx * 0.5 + dy * 0.85;
-          const d = BAYER[(row & 3) * 4 + (x & 3)] * 0.3;
-          buf[row * W + x] = light > 0.42 + d ? hi : light < -0.45 + d ? lo : body;
+          const light = dx * 0.45 + dy * 0.8 + (leafHeight(x + li * 31, y) - 0.5) * 0.8;
+          const t = dith(row, x) * 0.3;
+          put(x, y, light > 0.36 + t ? hi : light < -0.38 + t ? lo : body);
         }
       }
     }
+  });
+  // Glow around the gap in the canopy (open sky only).
+  const glow = packHex(pal.glow), gr = H * 0.6;
+  for (let r = 0; r < H; r++) for (let x = 0; x < W; x++) {
+    const p = r * W + x;
+    if (painted[p]) continue;
+    const d = Math.hypot((x - sx) * 0.8, r - sr) / gr;
+    if (d >= 1) continue;
+    const a = pal.glowK * (1 - d) * (1 - d);
+    buf[p] = blend(buf[p], glow, Math.floor(a * 5 + dith(r, x)) / 5);
   }
-  return buf;
-}
-
-// The same scene at night: a deep blue sky with stars and a moon, and the
-// far hills and trees as dark silhouettes.
-function buildNight(bg, W, H, style) {
-  const day = buildSkyOnly(W, H, style);
-  const out = new Uint32Array(W * H);
-  const rand = rng(4242);
+  // Mist lying low over the ground.
+  const mist = packHex(pal.mist);
   for (let r = 0; r < H; r++) {
-    const f = (r / (H * 0.8)) * (NIGHT_SKY.length - 1);
+    const y = H - 1 - r, m = pal.mistK * Math.max(0, 1 - Math.abs(y - H * 0.32) / (H * 0.17));
+    if (m <= 0) continue;
     for (let x = 0; x < W; x++) {
-      const p = r * W + x;
-      if (bg[p] === day[p]) out[p] = NIGHT_SKY[Math.max(0, Math.min(NIGHT_SKY.length - 1, Math.floor(f + BAYER[(r & 3) * 4 + (x & 3)] - 0.5)))];
-      else out[p] = blend(bg[p], NIGHT, 0.78);
+      const k = Math.floor(m * (0.75 + 0.5 * vnoise(x / 14, y / 5)) * 6 + dith(r, x)) / 6;
+      if (k > 0) buf[r * W + x] = blend(buf[r * W + x], mist, Math.min(0.8, k));
     }
   }
-  const stars = [];
-  for (let k = 0; k < W * H / 90; k++) {
-    const x = (rand() * W) | 0, r = (rand() * H * 0.6) | 0, p = r * W + x;
-    if (bg[p] !== day[p]) continue;
-    out[p] = blend(out[p], STAR, 0.4 + rand() * 0.6);
+  // Sunbeams fanning down from the gap, fading toward the ground.
+  const beamCol = packHex(pal.beam), rb = rng(5);
+  const beams = Array.from({ length: 6 }, () => [-0.85 + rb() * 0.95, 0.018 + rb() * 0.04, 0.45 + rb() * 0.55]);
+  for (let r = 0; r < H; r++) for (let x = 0; x < W; x++) {
+    const ang = Math.atan2(x - sx, r - sr);
+    let I = 0;
+    for (const [c, w, a] of beams) { const d = Math.abs(ang - c) / w; if (d < 1) I += a * (1 - d * d); }
+    if (I <= 0) continue;
+    I = Math.min(1, I) * Math.max(0, 1 - r / (H * 0.95));
+    const p = r * W + x;
+    beam[p] = I * 255;
+    const k = Math.floor(I * pal.beamK * 8 + dith(r, x)) / 8;
+    if (k > 0) buf[p] = blend(buf[p], beamCol, k);
+  }
+  return { buf, painted, beam };
+}
+
+// Stars and the moon in the open sky of the night forest. Returns where the
+// stars are, so a few can twinkle.
+function addStarsAndMoon(buf, painted, W, H) {
+  const rand = rng(4242), stars = [];
+  for (let k = 0; k < W * H / 45; k++) {
+    const x = (rand() * W) | 0, r = (rand() * H * 0.42) | 0, p = r * W + x;
+    if (painted[p]) continue;
+    buf[p] = blend(buf[p], STAR, 0.35 + rand() * 0.65);
     stars.push(p);
   }
-  // The moon, with a few darker patches.
-  const mx = W * 0.82, my = H * 0.16, mr = Math.max(3.5, H * 0.028);
-  for (let r = Math.floor(my - mr); r <= my + mr; r++) for (let x = Math.floor(mx - mr); x <= mx + mr; x++) {
-    if (x < 0 || r < 0 || x >= W || r >= H) continue;
-    const d = Math.hypot(x + 0.5 - mx, r + 0.5 - my);
-    if (d > mr) continue;
-    out[r * W + x] = hash(x >> 1, r >> 1) < 0.22 ? MOON_DARK : MOON;
+  const [sx] = sunAt(W, H), my = H * 0.13, mr = Math.max(3.5, H * 0.03);
+  for (let r = Math.floor(my - mr); r <= my + mr; r++) for (let x = Math.floor(sx - mr); x <= sx + mr; x++) {
+    if (x < 0 || r < 0 || x >= W || r >= H || painted[r * W + x]) continue;
+    if (Math.hypot(x + 0.5 - sx, r + 0.5 - my) > mr) continue;
+    buf[r * W + x] = hash(x >> 1, r >> 1) < 0.22 ? MOON_DARK : MOON;
   }
-  return { sky: out, stars };
-}
-
-// Just the sky gradient, to tell which background pixels are open sky.
-function buildSkyOnly(W, H, style) {
-  const buf = new Uint32Array(W * H);
-  const sky = style.sky.map(packHex);
-  for (let r = 0; r < H; r++) {
-    const f = (r / (H * 0.75)) * (sky.length - 1);
-    for (let x = 0; x < W; x++) {
-      const k = Math.min(sky.length - 1, Math.floor(f + BAYER[(r & 3) * 4 + (x & 3)] - 0.5 + 0.5));
-      buf[r * W + x] = sky[Math.max(0, k)];
-    }
-  }
-  return buf;
+  return stars;
 }
 
 export class Renderer2D {
@@ -216,9 +274,6 @@ export class Renderer2D {
     this.shake = 0;         // screen shake after explosions, in screen pixels
     this.night = 0;         // 0 day .. 1 night
     this.lastTime = 0;
-    this.style = STYLES[0];   // visual style (see styles.js)
-    this.lut = null;          // its colour grade, or null to keep colours as they are
-    this.luts = new Map(); this.skies = new Map();
     this.rebuild();
   }
 
@@ -235,7 +290,6 @@ export class Renderer2D {
     this.mimg = this.mctx.createImageData(W * MOB_S, H * MOB_S);
     this.mbuf = new Uint32Array(this.mimg.data.buffer);
     this.mobBox = null;
-    this.raw = new Uint32Array(W * H);   // last frame before the style's colour grade
     this.buildSky();
     this.parts.length = 0;
     this.depth = new Uint8Array(W * H);
@@ -268,52 +322,13 @@ export class Renderer2D {
     this.wrap.style.transform = '';
   }
 
-  // The sky and far hills for the current style, by day and by night.
+  // The forest behind the world, by day and by night.
   buildSky() {
     const { W, H } = this.world;
-    this.bg = buildBackground(W, H, this.style);
-    const night = buildNight(this.bg, W, H, this.style);
-    this.bgNight = night.sky; this.stars = night.stars;
+    const day = buildForest(W, H, DAY_PAL), night = buildForest(W, H, NIGHT_PAL);
+    this.bg = day.buf; this.beam = day.beam;
+    this.bgNight = night.buf; this.stars = addStarsAndMoon(night.buf, night.painted, W, H);
     this.bgMix = new Uint32Array(W * H); this.bgMixAt = -1;
-  }
-
-  lutFor(style) {
-    if (!this.luts.has(style.id)) this.luts.set(style.id, makeLut(style));
-    return this.luts.get(style.id);
-  }
-
-  // Switch visual style at once: new sky, new colour grade, and the creature
-  // layer is redrawn whole on the next frame.
-  setStyle(style) {
-    this.style = style;
-    this.lut = this.lutFor(style);
-    this.buildSky();
-    this.mobBox = [0, 0, this.mobCanvas.width, this.mobCanvas.height];
-  }
-
-  // The world as it is right now, drawn in another style, into `canvas`.
-  preview(style, canvas, gore) {
-    const { W, H, type } = this.world;
-    canvas.width = W; canvas.height = H;
-    const ctx = canvas.getContext('2d');
-    const img = ctx.createImageData(W, H), out = new Uint32Array(img.data.buffer);
-    // Each style's sky is built once per world size, then reused.
-    const key = style.id + ':' + W + 'x' + H;
-    let sky = this.skies.get(key);
-    if (!sky) {
-      const bg = buildBackground(W, H, style);
-      sky = { bg, night: buildNight(bg, W, H, style).sky };
-      this.skies.set(key, sky);
-    }
-    const bg = sky.bg, n = this.night, nb = n > 0.003 ? sky.night : null;
-    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-      const p = (H - 1 - y) * W + x;
-      out[p] = type[x + W * y] !== EMPTY ? this.raw[p] : nb ? blend(bg[p], nb[p], n) : bg[p];
-    }
-    if (this.creatures) for (const c of this.creatures.list) drawCreature(c, { buf: out, BW: W, BH: H, S: 1, x0: 0, y0: H, gore, tick: 0 });
-    const lut = this.lutFor(style);
-    if (lut) applyLut(out, lut);
-    ctx.putImageData(img, 0, 0);
   }
 
   resize(w, h) {
@@ -451,7 +466,7 @@ export class Renderer2D {
       }
       buf.set(this.bgMix);
       // A few stars twinkle.
-      if (night > 0.5) for (let k = (time * 7) % 9 | 0; k < this.stars.length; k += 9) buf[this.stars[k]] = blend(buf[this.stars[k]], NIGHT_SKY[1], 0.6);
+      if (night > 0.5) for (let k = (time * 7) % 9 | 0; k < this.stars.length; k += 9) buf[this.stars[k]] = blend(buf[this.stars[k]], NIGHT_SKY1, 0.6);
     } else buf.set(this.bg);
     const sky = night > 0.003 ? this.bgMix : this.bg;
     gbuf.fill(0);
@@ -487,10 +502,21 @@ export class Renderer2D {
             if (exposed && run < 4) {
               c = GRASS[run];
               if (run === 0 && (sh & 7) === 0) c = BLADE[0];
-              // Grass tufts poke up into the air above.
-              if (run === 0 && y < H - 1 && type[i + W] === EMPTY && ((x * 7 + (x >> 2)) % 5) < 2) {
-                buf[p - W] = BLADE[(x >> 1) & 1];
-                if ((x % 9) === 0 && y < H - 2 && type[i + 2 * W] === EMPTY) buf[p - 2 * W] = BLADE[0];
+              // Open grass grows blades that sway, and here and there a flower or a mushroom.
+              if (run === 0 && y < H - 2 && type[i + W] === EMPTY) {
+                const up2 = type[i + 2 * W] === EMPTY, hx = hash(x, 17);
+                if (hx < 0.035 && up2) {
+                  buf[p - W] = STEM; buf[p - 2 * W] = PETALS[(hash(x, 3) * 5) | 0];
+                } else if (hx < 0.05 && up2 && x > 0 && x < W - 1 && type[i + W - 1] === EMPTY && type[i + W + 1] === EMPTY) {
+                  buf[p - W] = CAP_STALK;
+                  buf[p - 2 * W - 1] = CAP; buf[p - 2 * W] = (x & 1) ? CAP_DOT : CAP; buf[p - 2 * W + 1] = CAP;
+                } else if (((x * 7 + (x >> 2)) % 5) < 2) {
+                  buf[p - W] = BLADE[1 + ((x >> 1) & 1)];
+                  if (hx > 0.72 && up2) {
+                    const sway = Math.sin(time * 1.7 + x * 0.23) > 0.55 ? 1 : 0;
+                    if (x + sway < W && type[i + 2 * W + sway] === EMPTY) buf[p - 2 * W + sway] = BLADE[0];
+                  }
+                }
               }
             } else c = scale(c, 1 - Math.min(run, 36) / 36 * 0.4);
             break;
@@ -523,7 +549,9 @@ export class Renderer2D {
             c = PAL[STONE][sp & 3];
             if (sp & 4) c = scale(c, 0.66);
             else if (sp & 8) c = scale(c, 1.08);
-            if (exposed && run === 0) c = STONE_TOP;
+            // Moss grows on top of rocks open to the air.
+            if (exposed && run === 0) c = MOSS[(sh >> 2) % 3];
+            else if (exposed && run === 1 && (sh & 3) === 0) c = MOSS[2];
             else if (y > 0 && type[i - W] === EMPTY) c = scale(c, 0.8);
             else c = scale(c, 1 - Math.min(run, 50) / 50 * 0.45);
             break;
@@ -698,9 +726,6 @@ export class Renderer2D {
       for (let p = 0; p < buf.length; p++) if (gbuf[p] === 0 && buf[p] !== sky[p]) buf[p] = blend(buf[p], NIGHT, k);
     }
     this.updateParts(dt, gbuf);
-    this.raw.set(buf);
-    // The style's colour grade (not on the thermal camera, which must read true).
-    if (this.lut && !thermalView) { applyLut(buf, this.lut); applyLut(gbuf, this.lut); }
     this.drawCursor();
     this.ctx.putImageData(this.img, 0, 0);
     this.gctx.putImageData(this.gimg, 0, 0);
@@ -710,7 +735,8 @@ export class Renderer2D {
   // ----- particles -----
   // Purely visual sparks and drops, in cell units (y up) and cells per second.
   // kind 0: ember (rises and flickers), 1: debris or drop (falls), 2: spark
-  // (falls slowly), 3: firefly (wanders and blinks).
+  // (falls slowly), 3: firefly (wanders and blinks), 4: black-hole swirl,
+  // 5: dust mote (floats in a sunbeam).
   addPart(x, y, vx, vy, life, col, kind, glow) {
     if (this.parts.length >= 900) return;
     this.parts.push({ x, y, vx, vy, life, max: life, col, kind, glow, ph: Math.random() * 6.28 });
@@ -762,8 +788,15 @@ export class Renderer2D {
   updateParts(dt, gbuf) {
     this.takeFx();
     const { W, H, type } = this.world;
-    // Fireflies come out at night, near the ground.
-    if (this.night > 0.6 && Math.random() < 0.15) {
+    // By day, specks of dust float in the sunbeams.
+    if (this.night < 0.4 && Math.random() < 0.5) {
+      const motes = this.parts.reduce((n, q) => n + (q.kind === 5 ? 1 : 0), 0);
+      const x = Math.random() * W, y = Math.random() * H, p = (H - 1 - (y | 0)) * W + (x | 0);
+      if (motes < W / 6 && this.beam[p] > 70 && type[(x | 0) + W * (y | 0)] === EMPTY)
+        this.addPart(x, y, (Math.random() - 0.5) * 0.8, (Math.random() - 0.5) * 0.4, 4 + Math.random() * 5, MOTE, 5, true);
+    }
+    // Fireflies come out at dusk, near the ground.
+    if (this.night > 0.5 && Math.random() < 0.15) {
       const flies = this.parts.reduce((n, q) => n + (q.kind === 3 ? 1 : 0), 0);
       if (flies < W / 14) {
         const x = Math.random() * W;
@@ -786,6 +819,11 @@ export class Renderer2D {
         if (d < 1) continue;
         q.vx = (-dy / d * 9 + dx / d * 4) * (8 / (d + 2)); q.vy = (dx / d * 9 + dy / d * 4) * (8 / (d + 2));
       }
+      else if (q.kind === 5) {
+        q.vx += (Math.random() - 0.5) * 2 * dt; q.vy += Math.sin(q.ph + q.life) * 0.4 * dt;
+        q.vx = Math.max(-0.8, Math.min(0.8, q.vx)); q.vy = Math.max(-0.5, Math.min(0.5, q.vy));
+        if (this.night > 0.5) q.life = Math.min(q.life, 0.5);
+      }
       else {
         q.vx += (Math.random() - 0.5) * 20 * dt; q.vy += (Math.random() - 0.5) * 20 * dt;
         q.vx = Math.max(-2.5, Math.min(2.5, q.vx)); q.vy = Math.max(-2.5, Math.min(2.5, q.vy));
@@ -801,7 +839,7 @@ export class Renderer2D {
         else continue;
       }
       // Glowing ones light up the glow layer (fireflies only when lit).
-      const on = q.kind !== 3 || Math.sin(q.ph + q.life * 4) > 0.2;
+      const on = q.kind === 5 ? Math.sin(q.ph + q.life * 2) > 0.6 : q.kind !== 3 || Math.sin(q.ph + q.life * 4) > 0.2;
       if (q.glow && on) gbuf[(H - 1 - cy) * W + cx] = q.col;
       parts[n++] = q;
     }
@@ -813,13 +851,14 @@ export class Renderer2D {
     for (const q of this.parts) {
       const f = Math.min(1, q.life / (q.max * 0.4));
       if (q.kind === 3 && Math.sin(q.ph + q.life * 4) <= 0.2) continue;
+      if (q.kind === 5 && (Math.sin(q.ph + q.life * 2) < -0.3 || f < 0.5)) continue;
       if (q.kind === 0 && Math.random() < 0.25) continue; // flicker
       const px = (q.x * S) | 0, py = ((H - q.y) * S) | 0;
       if (px < 0 || py < 0 || px >= BW - 1 || py >= BH - 1) continue;
-      const c = f < 1 ? blend(q.col, FIRE_P[5], 1 - f) : q.col;
+      const c = f < 1 && q.kind !== 5 ? blend(q.col, FIRE_P[5], 1 - f) : q.col;
       buf[py * BW + px] = c;
       // Bright sparks and debris are 2×2 while fresh.
-      if (q.kind !== 0 && q.kind !== 3 && f > 0.6) { buf[py * BW + px + 1] = c; buf[(py + 1) * BW + px] = c; buf[(py + 1) * BW + px + 1] = c; }
+      if (q.kind !== 0 && q.kind !== 3 && q.kind !== 5 && f > 0.6) { buf[py * BW + px + 1] = c; buf[(py + 1) * BW + px] = c; buf[(py + 1) * BW + px + 1] = c; }
     }
   }
 
@@ -881,7 +920,6 @@ export class Renderer2D {
     const o = { buf: this.mbuf, BW, BH, S: MOB_S, x0: 0, y0: H, gore: cr.gore, tick: Math.floor(time * 12), tint, marks: true, underwater };
     for (const c of near) drawCreature(c, o);
     this.drawParts(this.mbuf, BW, BH);
-    if (this.lut) for (let py = box[1]; py < box[3]; py++) applyLut(this.mbuf, this.lut, py * BW + box[0], py * BW + box[2]);
     flush();
   }
 

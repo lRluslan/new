@@ -15,7 +15,7 @@ export function drawSwatch(canvas, t) {
   const img = ctx.createImageData(S, S);
   for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
     let c = pal[(rand() * pal.length) | 0];
-    if (t === El.DIRT && y < 3) c = rgb(['#e2b844', '#d6a22b', '#c08a22'][y]);
+    if (t === El.DIRT && y < 3) c = rgb(['#a6e05a', '#74c447', '#53a53d'][y]);
     else if (y === 0 && El.STATE[t] !== El.GAS) c = mix(c, [255, 244, 210], 0.3);
     if (t === El.FIRE) c = rgb(['#fff2b0', '#ffd04a', '#ff8a1f', '#e04a17'][Math.min(3, Math.floor((S - 1 - y) / 2.6) + (rand() < 0.3 ? 1 : 0))]);
     const o = (y * S + x) * 4;

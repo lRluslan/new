@@ -170,7 +170,7 @@ export const DISCOVERY_BY_ID = Object.fromEntries(DISCOVERIES.map(d => [d.id, d]
 // soak up or give away at the threshold before it changes phase, so ice
 // stays at 0 °C while melting and water stays at 100 °C while boiling.
 // ignite/burn: [burn time, flame temperature, chance of leaving ash].
-// c2: palette (warm autumn pixel art).
+// c2: palette (green forest pixel art).
 const DEFS = [];
 function def(id, d) { DEFS[id] = d; }
 
@@ -179,11 +179,11 @@ def(EMPTY, { name: 'Air', state: 0, density: 1.2, k: 0.008, c: 0.25 });
 def(STONE, { name: 'Stone', cat: 'solid', state: SOLID, density: 2600, k: 0.12, c: 0.8,
   hot: [1200, LAVA, DISC.ROCK_MELT], hard: 0.25,
   desc: 'Heavy rock. Melts into lava above 1200 °C.',
-  c2: ['#8e8a76', '#7d7a69', '#9c9884', '#6f6c5e'] });
+  c2: ['#848c80', '#737b70', '#959c8e', '#646c62'] });
 
 def(DIRT, { name: 'Soil', cat: 'powder', state: POWDER, density: 1500, k: 0.06, c: 0.8, slide: 0.18, hard: 0.6,
   desc: 'Earth that grass grows on. Seeds sprout in it.',
-  c2: ['#7a4b2a', '#6b4025', '#855430', '#5e3820'] });
+  c2: ['#6a4630', '#5c3c28', '#785238', '#4e3222'] });
 
 def(SAND, { name: 'Sand', cat: 'powder', state: POWDER, density: 1600, k: 0.07, c: 0.8, slide: 0.95, hard: 0.6,
   hot: [950, GLASS, DISC.GLASS],
@@ -212,7 +212,7 @@ def(SEED, { name: 'Seed', cat: 'life', state: POWDER, density: 1100, k: 0.05, c:
 def(WATER, { name: 'Water', cat: 'liquid', state: LIQUID, density: 1000, k: 0.14, c: 1.6, flow: 5, visc: 1, hard: 0,
   hot: [100, EMPTY, DISC.BOIL], cold: [0, ICE, DISC.FREEZE], latent: [300, 60],
   desc: 'Flows and levels out. Boils at 100 °C, freezes at 0 °C.',
-  c2: ['#62a89a', '#5a9f92', '#6db1a3', '#559789'] });
+  c2: ['#4faa9c', '#47a093', '#5ab4a6', '#3f968c'] });
 
 def(OIL, { name: 'Oil', cat: 'liquid', state: LIQUID, density: 850, k: 0.035, c: 0.6, flow: 3, visc: 0.8,
   ignite: 220, burn: [45, 850, 0], hard: 0.8,
@@ -242,12 +242,12 @@ def(FIRE, { name: 'Fire', cat: 'gas', state: GAS, density: 0.4, k: 0.2, c: 0.05,
 def(WOOD, { name: 'Wood', cat: 'solid', state: SOLID, density: 700, k: 0.04, c: 0.9, ignite: 350, burn: [150, 750, 0.55],
   hard: 0.5,
   desc: 'Solid fuel. Catches fire near 350 °C and burns to ash. Heated without air, it turns to charcoal.',
-  c2: ['#7a4a2c', '#6b3f25', '#8a5733', '#5e3820'] });
+  c2: ['#6e4a32', '#5e3e2a', '#7e583c', '#503424'] });
 
 def(PLANT, { name: 'Plant', cat: 'life', state: SOLID, density: 600, k: 0.06, c: 1.0, ignite: 260, burn: [22, 650, 0.25],
   hard: 1,
   desc: 'Leaves that drink water and grow. Very flammable.',
-  c2: ['#3e5f2c', '#567a32', '#2f4a26', '#6d8a34'] });
+  c2: ['#468e3c', '#5caa42', '#367436', '#7cc44c'] });
 
 def(ICE, { name: 'Ice', cat: 'solid', state: SOLID, density: 917, k: 0.16, c: 2.4, temp: -25, hard: 0.8,
   hot: [0.5, WATER, DISC.MELT], latent: [60, 0],
@@ -275,7 +275,7 @@ def(SALT, { name: 'Salt', cat: 'powder', state: POWDER, density: 2160, k: 0.08, 
 def(BRINE, { name: 'Salt water', cat: 'liquid', state: LIQUID, density: 1030, k: 0.14, c: 1.6, flow: 5, visc: 1, hard: 0,
   hot: [100, SALT, DISC.SALT_CRYSTALS], cold: [-2, ICE, DISC.FREEZE], latent: [300, 60],
   desc: 'Sea water. Sinks under fresh water, freezes at -2 °C and leaves salt when it boils.',
-  c2: ['#6aa69a', '#629d91', '#74afa2', '#5a9488'] });
+  c2: ['#6aa89c', '#62a094', '#74b2a6', '#5a978c'] });
 
 def(MUD, { name: 'Mud', cat: 'powder', state: POWDER, density: 1800, k: 0.1, c: 1.4, slide: 0.06, hard: 0.7,
   hot: [600, BRICK, DISC.BRICK],

@@ -1,5 +1,6 @@
-// The starting world: an autumn glade seen from the side, with rolling
-// ground, a pond with a sandy bed, a wooden dock, log stumps and trees.
+// The starting world: a forest glade seen from the side, with rolling
+// ground, a pond with a sandy bed, a wooden dock, log stumps, a fallen log,
+// mossy rocks and a stand of trees.
 // Everything is placed in fractions of the world size, so the scene fits
 // whatever size the screen makes the world.
 
@@ -79,7 +80,7 @@ function tree(w, x0, ground, height, crown, rand) {
   for (const [ox, oy, rx, ry] of clumps) blob(w, x + ox, top + oy, rx, ry, PLANT, rand, 0.55);
 }
 
-export function autumnGlade(w) {
+export function forestGlade(w) {
   w.clear();
   const { W, H } = w;
   const rand = rng(11);
@@ -116,16 +117,23 @@ export function autumnGlade(w) {
     for (let y = g(x) - 1; y <= level + 2; y++) for (let dx = 0; dx < 3; dx++) w.set(w.index(x + dx, y), WOOD);
   }
 
-  // A big tree on the left, a smaller one on the right, bushes and rocks.
-  tree(w, Math.round(W * 0.17), g(W * 0.17), Math.round(H * 0.36), Math.round(H * 0.13), rand);
-  tree(w, Math.round(W * 0.92), g(W * 0.92), Math.round(H * 0.28), Math.round(H * 0.1), rand);
-  for (const fx of [0.04, 0.3, 0.38, 0.84]) {
+  // A stand of trees: a big one on the left, a young one beside it and one
+  // across the pond. Then bushes, a fallen log and mossy rocks.
+  tree(w, Math.round(W * 0.13), g(W * 0.13), Math.round(H * 0.38), Math.round(H * 0.13), rand);
+  tree(w, Math.round(W * 0.33), g(W * 0.33), Math.round(H * 0.26), Math.round(H * 0.085), rand);
+  tree(w, Math.round(W * 0.91), g(W * 0.91), Math.round(H * 0.32), Math.round(H * 0.11), rand);
+  for (const fx of [0.03, 0.4, 0.83, 0.98]) {
     const x = Math.round(W * fx);
-    blob(w, x, g(x) + 2, H * 0.05 + rand() * 3, H * 0.035 + rand() * 1.5, PLANT, rand, 0.4);
+    blob(w, x, g(x) + 2, H * 0.045 + rand() * 3, H * 0.032 + rand() * 1.5, PLANT, rand, 0.45);
   }
-  for (const fx of [0.27, 0.8]) {
+  const l0 = Math.round(W * 0.2), l1 = Math.round(W * 0.27);
+  for (let x = l0; x <= l1; x++) {
+    const base = Math.max(g(l0), g(l1));
+    for (let y = base; y < base + 3; y++) if (!(x === l0 && y === base + 2) && !(x === l1 && y === base + 2)) w.set(w.index(x, y), WOOD);
+  }
+  for (const fx of [0.07, 0.29, 0.79]) {
     const x = Math.round(W * fx);
-    blob(w, x, g(x), 3, 2.2, STONE, rand, 0.2);
+    blob(w, x, g(x), 3 + rand() * 1.5, 2.2, STONE, rand, 0.25);
   }
 }
 
