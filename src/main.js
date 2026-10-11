@@ -11,6 +11,7 @@ import { Renderer2D } from './render2d.js';
 import { drawSwatch } from './swatches.js';
 import { Creatures, SPECIES, SPECIES_ORDER, iconCreature } from './creatures.js';
 import { drawCreature } from './creatureArt.js';
+import { Sound, brushKind } from './sound.js';
 
 const $ = sel => document.querySelector(sel);
 const app = $('#app');
@@ -90,6 +91,7 @@ function addDiscovery(id) {
   world.found[id] = 1;
   const d = El.DISCOVERY_BY_ID[id];
   toast(d.title, d.recipe, d.text);
+  sound.chime();
   renderDiscoveries();
 }
 
@@ -395,7 +397,7 @@ function clickTool(mode, e) {
   if (!c.inside) return;
   if (mode === 'bomb') world.explode(c.x, c.y, 5 + state.brush * 0.6, 5 + state.brush * 0.15);
   else if (mode === 'fill') floodFill(c.x, c.y, state.lastElement);
-  else if (mode === 'meteor') meteor(c.x, c.y);
+  else if (mode === 'meteor') { meteor(c.x, c.y); sound.whoosh(c.x / world.W * 1.6 - 0.8); }
   else strikeAt(c.x);
 }
 
@@ -533,6 +535,10 @@ function paint() {
       if (state.painting === 'erase') creatures.eraseAt(x + 0.5, y + 0.5, r);
     }
     state.lastCell = c;
+    if (c.inside) {
+      const m = state.painting;
+      sound.brush(m === 'add' ? brushKind(t) : m, c.x / world.W * 1.6 - 0.8);
+    }
   }
   return c.inside ? world.index(c.x, c.y) : null;
 }
@@ -549,6 +555,7 @@ window.addEventListener('keydown', e => {
   if (keyFor.has(k)) { select({ kind: 'el', id: keyFor.get(k) }); return; }
   if (KEY_TOOLS[k]) { select({ kind: 'tool', id: KEY_TOOLS[k] }); return; }
   if (k === 't') { $('#btn-thermal').click(); return; }
+  if (k === 's') { setSound(!sound.on, true); return; }
   if (k === 'r') { resetScene(); return; }
   if (k === 'c') { clearScene(); return; }
   if (k === '?' || k === '/') { openPanel('help'); return; }
@@ -684,6 +691,43 @@ function timeTick(dt) {
   r2d.setNight(nightNow);
 }
 
+// ----- sound -----
+// Made on the fly (see sound.js). It starts on the first click or key press,
+// because browsers do not allow a page to play sound before that.
+const sound = new Sound();
+function setSound(on, byPlayer = false) {
+  sound.setOn(on);
+  store.set('sound', on);
+  $('#btn-sound').setAttribute('aria-pressed', String(on));
+  $('#sound-label').textContent = on ? 'Sound' : 'Muted';
+  if (on && byPlayer) { sound.unlock(); sound.click(); }
+}
+$('#btn-sound').addEventListener('click', () => setSound(!sound.on, true));
+for (const ev of ['pointerdown', 'keydown']) window.addEventListener(ev, () => sound.unlock(), { capture: true });
+document.addEventListener('visibilitychange', () => sound.setHidden(document.hidden));
+// Soft ticks on the interface buttons.
+document.addEventListener('click', e => { if (e.target.closest('button') && !e.target.closest('#btn-sound')) sound.click(); });
+// How much fire and lava there is, counted a few times a second.
+let fireN = 0, lavaN = 0, countT = 0;
+function soundTick(dt) {
+  sound.events(world.fx, world.W);
+  if ((countT -= dt) <= 0) {
+    countT = 0.2;
+    const { type, flags } = world;
+    let f = 0, l = 0;
+    for (let i = 0; i < type.length; i++) {
+      const t = type[i];
+      if (t === El.FIRE || (flags[i] & 4)) f++;
+      else if (t === El.LAVA || t === El.MOLTEN || t === El.MOLTEN_GOLD) l++;
+    }
+    fireN = f; lavaN = l;
+  }
+  sound.update({
+    dt, night: nightNow, weather: state.weather, paused: state.paused, fire: fireN, lava: lavaN,
+    creatures: creatures.list, W: world.W, blowing: state.painting === 'wind',
+  });
+}
+
 // ----- main loop -----
 // One simulation step per screen frame on a 60 Hz screen, so motion is even.
 const RATE = 60; // simulation steps per second at 1× speed
@@ -708,6 +752,7 @@ function frame(now) {
   }
   weatherTick(now);
   timeTick(dt);
+  soundTick(dt);
   r2d.render(now / 1000, state.thermal);
   while (world.events.length) addDiscovery(world.events.shift());
   inspect(hover, hoverMob());
@@ -717,13 +762,14 @@ function frame(now) {
 }
 
 // Handy for poking at the simulation from the browser console.
-window.sandgrove = { world, creatures, r2d, El };
+window.sandgrove = { world, creatures, r2d, El, sound };
 
 // ----- start -----
 select(state.selected);
 setWeather(state.weather);
 setTime(state.time);
 setGore(creatures.gore);
+setSound(store.get('sound', true));
 setSpeed(state.speed);
 syncBrush();
 renderDiscoveries();

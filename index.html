@@ -125,6 +125,10 @@
         <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.2c1.8 2.6 4 4.9 4 7.3a4 4 0 0 1-8 0c0-2.4 2.2-4.7 4-7.3z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M6.4 10.2a1.7 1.7 0 0 0 1.6 1.5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
         <span id="gore-label">Blood</span>
       </button>
+      <button type="button" class="toggle" id="btn-sound" aria-pressed="true" title="Sound effects on or off (S)">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 6v4h2.6L8.5 13V3L5.1 6z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path class="wave" d="M10.6 5.6a3.4 3.4 0 0 1 0 4.8M12.4 3.9a5.8 5.8 0 0 1 0 8.2" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><path class="mute" d="M10.8 6.2l3.6 3.6M14.4 6.2l-3.6 3.6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+        <span id="sound-label">Sound</span>
+      </button>
       <button type="button" class="toggle" id="btn-view" title="Zoom back out to the whole world">View</button>
       <span class="fps" id="fps" aria-hidden="true"></span>
     </div>
@@ -161,7 +165,7 @@
           <ul class="keys">
             <li><kbd>1</kbd>–<kbd>0</kbd> elements · <kbd>E</kbd> <kbd>H</kbd> <kbd>J</kbd> <kbd>G</kbd> <kbd>B</kbd> <kbd>L</kbd> <kbd>W</kbd> <kbd>N</kbd> <kbd>F</kbd> <kbd>M</kbd> tools</li>
             <li><kbd>[</kbd> <kbd>]</kbd> brush size · <kbd>+</kbd> <kbd>−</kbd> zoom · arrows move</li>
-            <li><kbd>Space</kbd> pause · <kbd>.</kbd> step · <kbd>T</kbd> thermal camera</li>
+            <li><kbd>Space</kbd> pause · <kbd>.</kbd> step · <kbd>T</kbd> thermal camera · <kbd>S</kbd> sound</li>
             <li><kbd>R</kbd> reset · <kbd>C</kbd> clear</li>
           </ul>
         </div>

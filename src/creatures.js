@@ -1152,6 +1152,8 @@ export class Creatures {
     c.hp -= amount * (Creatures.CUTS[cause] ? 0.65 : 1);
     c.cause = cause;
     if (amount >= 1 || jolt > 0) { c.hurtT = 150; c.hurtFlash = Math.max(c.hurtFlash, jolt > 4 ? 8 : 3); }
+    // Let the sound effects know (a cry, and a thud for a hard knock).
+    if (amount >= 1 || jolt > 6) this.world.addFx({ k: 'hurt', x: c.px[0], y: c.py[0], c, jolt });
     if (jolt > 6) c.stun = Math.max(c.stun, Math.min(140, jolt * 3));
     // A hard knock throws out a spray of blood from the wound.
     if (this.gore && sp.bleeds && k >= 0 && jolt > 6 && Creatures.CUTS[cause]) this.spray(c, k, Math.min(8, Math.round(jolt / 6)), 1.2);
@@ -1162,6 +1164,7 @@ export class Creatures {
   die(c) {
     c.alive = false; c.hp = 0; c.strength = 0; c.speed = 0; c.mood = 'dead';
     const w = this.world;
+    w.addFx({ k: 'die', x: c.px[0], y: c.py[0], c });
     if (c.cause === 'drown') w.discover(DISC.DROWN);
     else if (c.cause === 'crush' || c.cause === 'buried') w.discover(DISC.CRUSH);
   }

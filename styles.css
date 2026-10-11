@@ -623,6 +623,10 @@ kbd {
 .el canvas.mob-icon { background: var(--well); }
 .info-icon.tool-grab { color: var(--accent); }
 #btn-gore[aria-pressed="true"] { color: #e8604a; }
+#btn-sound .mute { display: none; }
+#btn-sound[aria-pressed="false"] { color: var(--faint); }
+#btn-sound[aria-pressed="false"] .wave { display: none; }
+#btn-sound[aria-pressed="false"] .mute { display: inline; }
 .tool-grab i { color: var(--accent); }
 .tool-bomb i { color: #ff8a5a; background: #2a1814; }
 .tool-bolt i { color: #b8e4ff; background: #141c2a; }

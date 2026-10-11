@@ -31,6 +31,31 @@ Everything is drawn as one green forest:
 - **The interface:** deep forest greens with a fresh leaf-green highlight,
   a little pixel tree as the logo and a strip of pixel grass under the title.
 
+### Sound
+
+The game has sound effects, all made live in code (there are no sound
+files), so they follow what is happening:
+
+- **The forest:** a soft wind that rises and falls, birdsong by day, and
+  crickets and the odd owl at night. Rain, storms and hail have their own
+  sound, and storms bring thunder with every lightning strike.
+- **What you paint:** a sandy hiss for powders, little bloops for liquids,
+  a whoosh for fire, a rustle for plants, a sizzle for the Heat tool and a
+  gust for the Wind tool.
+- **Big moments:** explosions boom (bigger blasts boom louder), meteors
+  whoosh in, fireworks pop and crackle, water splashes, fire roars and
+  crackles more the bigger it gets, and lava bubbles.
+- **Creatures:** each kind has its own voice: people cry out, dogs bark,
+  cats meow, sheep baa, chickens cluck, frogs croak, robots beep and
+  zombies groan. They make noises now and then, cry out when hurt, and land
+  with a thud after a hard fall.
+- **Discoveries** play a little chime.
+
+Sounds come from the left or the right to match where they happen. The
+**Sound** button (or the `S` key) turns sound on or off, and the game
+remembers your choice. Browsers only allow sound after you first click or
+press a key, so the forest goes quiet until then.
+
 ### Creatures
 
 The **Creatures** group in the palette has five kinds of little ragdoll creatures:
@@ -169,7 +194,7 @@ Keys:
 - `1` to `0` pick elements. `E` is the eraser, `H` heat, `J` cool, `G` grab, `B` bomb, `L` lightning, `W` wind, `N` line, `F` fill, `M` meteor.
 - `Space` pauses, `.` moves one step forward.
 - `R` resets the world and `C` clears it.
-- `T` turns on the thermal camera. The **View** button zooms back out to the whole world.
+- `T` turns on the thermal camera. `S` turns sound on or off. The **View** button zooms back out to the whole world.
 - `?` opens the help.
 
 Things to try:
@@ -339,6 +364,7 @@ catches fire. Many times a second, every cell:
 | `src/creatureArt.js` | Draws the creatures as pixel art, in the world and on the buttons. |
 | `src/scenes.js` | How big the world is for your screen, and the starting scene (a forest glade with a pond, dock, trees and a fallen log). |
 | `src/render2d.js` | Draws the world as pixel art: the forest background, every element's colours, the little effects, zoom and the thermal camera. |
+| `src/sound.js` | All the sound effects, made live with the browser's Web Audio system. |
 | `src/swatches.js` | Draws the little previews on the element buttons. |
 | `src/main.js` | Buttons, mouse, touch, keyboard, weather and the game loop. |
 | `server.js` | The small local web server started by `npm start`. |
